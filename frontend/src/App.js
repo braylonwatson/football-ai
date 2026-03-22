@@ -386,7 +386,7 @@ function App() {
     },
     setupSubtitle: {
       marginTop: "10px",
-      color: "#ffffff",
+      color: "#000000",
       marginBottom: "24px",
     },
   };
