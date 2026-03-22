@@ -24,6 +24,8 @@ function App() {
   const [actualPlayType, setActualPlayType] = useState("RUN");
   const [yardsGained, setYardsGained] = useState(0);
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
   const refreshData = async () => {
     try {
       const pendingRes = await fetch(`${API}/pending`);
@@ -44,6 +46,11 @@ function App() {
 
   useEffect(() => {
     refreshData();
+
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const handleSetTeams = async () => {
@@ -134,7 +141,7 @@ function App() {
         "linear-gradient(180deg, #000000 0%, #000000 45%, #080808 100%)",
       color: "#f5f5f5",
       fontFamily: "Arial, sans-serif",
-      padding: "28px",
+      padding: isMobile ? "16px" : "28px",
     },
     container: {
       maxWidth: "1400px",
@@ -145,50 +152,56 @@ function App() {
         "linear-gradient(135deg, rgba(62, 136, 68, 0.86), rgba(32, 31, 31, 0.99))",
       border: "1px solid rgba(255, 255, 255, 0.18)",
       borderRadius: "20px",
-      padding: "28px",
+      padding: isMobile ? "20px" : "28px",
       marginBottom: "24px",
-      boxShadow: "0 20px 40px 5rgba(106, 102, 102, 0.56)",
+      boxShadow: "0 20px 40px rgba(106, 102, 102, 0.56)",
     },
     heroTitle: {
-      fontSize: "44px",
+      fontSize: isMobile ? "30px" : "44px",
       fontWeight: "800",
       margin: 0,
       color: "#0b0b0b",
+      wordBreak: "break-word",
+      lineHeight: isMobile ? "1.1" : "normal",
     },
     heroSubtitle: {
       marginTop: "10px",
-      fontSize: "16px",
+      fontSize: isMobile ? "14px" : "16px",
       color: "#0f0f0f",
+      wordBreak: "break-word",
+      lineHeight: "1.4",
     },
     sectionTitle: {
-      fontSize: "22px",
+      fontSize: isMobile ? "20px" : "22px",
       fontWeight: "800",
       color: "#f8fafc",
       marginBottom: "18px",
       marginTop: 0,
+      wordBreak: "break-word",
     },
     card: {
       background: "rgba(0, 0, 0, 1)",
       border: "1px solid rgba(220, 226, 220, 0.16)",
       borderRadius: "18px",
-      padding: "22px",
+      padding: isMobile ? "18px" : "22px",
       boxShadow: "0 12px 32px rgba(153, 227, 141, 0.22)",
       backdropFilter: "blur(6px)",
+      minWidth: 0,
     },
     grid2: {
       display: "grid",
-      gridTemplateColumns: "1.15fr 0.85fr",
+      gridTemplateColumns: isMobile ? "1fr" : "1.15fr 0.85fr",
       gap: "20px",
       marginBottom: "20px",
     },
     grid3: {
       display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
       gap: "16px",
     },
     statGrid: {
       display: "grid",
-      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+      gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
       gap: "14px",
       marginBottom: "20px",
     },
@@ -196,19 +209,22 @@ function App() {
       background: "linear-gradient(180deg, #000000, #000000)",
       border: "1px solid rgba(255, 255, 255, 0.16)",
       borderRadius: "16px",
-      padding: "16px",
+      padding: isMobile ? "14px" : "16px",
+      minWidth: 0,
     },
     statLabel: {
-      fontSize: "12px",
+      fontSize: isMobile ? "11px" : "12px",
       color: "#dbd3d3",
       textTransform: "uppercase",
       letterSpacing: "0.08em",
       marginBottom: "8px",
+      wordBreak: "break-word",
     },
     statValue: {
-      fontSize: "28px",
+      fontSize: isMobile ? "22px" : "28px",
       fontWeight: "800",
       color: "#f8fafc",
+      wordBreak: "break-word",
     },
     label: {
       display: "block",
@@ -216,6 +232,7 @@ function App() {
       fontWeight: "700",
       color: "#909192",
       marginBottom: "8px",
+      wordBreak: "break-word",
     },
     input: {
       width: "100%",
@@ -224,9 +241,10 @@ function App() {
       border: "1px solid rgba(29, 29, 29, 0.25)",
       background: "#121312",
       color: "#f8fafc",
-      fontSize: "15px",
+      fontSize: isMobile ? "16px" : "15px",
       outline: "none",
       boxSizing: "border-box",
+      minWidth: 0,
     },
     buttonPrimary: {
       padding: "12px 18px",
@@ -237,6 +255,7 @@ function App() {
       fontWeight: "700",
       cursor: "pointer",
       boxShadow: "0 10px 20px rgba(9, 59, 13, 0.25)",
+      width: isMobile ? "100%" : "auto",
     },
     buttonSecondary: {
       padding: "12px 18px",
@@ -246,12 +265,14 @@ function App() {
       color: "#2fc50e",
       fontWeight: "700",
       cursor: "pointer",
+      width: isMobile ? "100%" : "auto",
     },
     buttonRow: {
       display: "flex",
       gap: "12px",
       marginTop: "18px",
       flexWrap: "wrap",
+      flexDirection: isMobile ? "column" : "row",
     },
     badge: {
       display: "inline-block",
@@ -260,22 +281,26 @@ function App() {
       fontSize: "12px",
       fontWeight: "800",
       letterSpacing: "0.05em",
-      marginLeft: "10px",
+      marginLeft: isMobile ? "0" : "10px",
+      marginTop: isMobile ? "10px" : "0",
     },
     predictionBig: {
-      fontSize: "40px",
+      fontSize: isMobile ? "30px" : "40px",
       fontWeight: "900",
       color: "#f8fafc",
       margin: "0 0 8px 0",
+      wordBreak: "break-word",
+      lineHeight: isMobile ? "1.1" : "normal",
     },
     predictionMeta: {
       color: "#94b899",
-      fontSize: "14px",
+      fontSize: isMobile ? "13px" : "14px",
       marginBottom: "18px",
+      wordBreak: "break-word",
     },
     metricRow: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
+      gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
       gap: "12px",
       marginBottom: "18px",
     },
@@ -284,6 +309,7 @@ function App() {
       border: "1px solid rgba(26, 26, 27, 0.14)",
       borderRadius: "14px",
       padding: "14px",
+      minWidth: 0,
     },
     metricLabel: {
       fontSize: "12px",
@@ -291,15 +317,17 @@ function App() {
       marginBottom: "8px",
       textTransform: "uppercase",
       letterSpacing: "0.08em",
+      wordBreak: "break-word",
     },
     metricValue: {
-      fontSize: "26px",
+      fontSize: isMobile ? "22px" : "26px",
       fontWeight: "800",
       color: "#f8fafc",
+      wordBreak: "break-word",
     },
     strategyGrid: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
+      gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
       gap: "12px",
       marginTop: "14px",
     },
@@ -308,6 +336,7 @@ function App() {
       borderRadius: "12px",
       padding: "12px",
       border: "1px solid rgba(255, 248, 248, 0.7)",
+      minWidth: 0,
     },
     strategyLabel: {
       fontSize: "12px",
@@ -315,10 +344,12 @@ function App() {
       marginBottom: "6px",
       textTransform: "uppercase",
       letterSpacing: "0.08em",
+      wordBreak: "break-word",
     },
     strategyValue: {
       fontWeight: "700",
       color: "#f8fafc",
+      wordBreak: "break-word",
     },
     reasonBox: {
       marginTop: "12px",
@@ -327,32 +358,38 @@ function App() {
       borderRadius: "12px",
       padding: "12px",
       color: "#dbeafe",
+      wordBreak: "break-word",
+      lineHeight: "1.4",
     },
     tableWrap: {
       overflowX: "auto",
       borderRadius: "16px",
       border: "1px solid rgba(7, 47, 8, 0.32)",
+      WebkitOverflowScrolling: "touch",
     },
     table: {
       width: "100%",
       borderCollapse: "collapse",
       background: "#123004",
+      minWidth: isMobile ? "700px" : "100%",
     },
     th: {
       textAlign: "left",
-      padding: "14px",
+      padding: isMobile ? "10px" : "14px",
       color: "#c4c7ca",
-      fontSize: "12px",
+      fontSize: isMobile ? "10px" : "12px",
       textTransform: "uppercase",
       letterSpacing: "0.08em",
       borderBottom: "1px solid rgba(45, 56, 45, 0.54)",
       background: "#032003",
+      whiteSpace: "nowrap",
     },
     td: {
-      padding: "14px",
+      padding: isMobile ? "10px" : "14px",
       borderBottom: "1px solid rgba(26, 76, 33, 0.26)",
       color: "#e5e7eb",
-      fontSize: "14px",
+      fontSize: isMobile ? "12px" : "14px",
+      whiteSpace: isMobile ? "nowrap" : "normal",
     },
     empty: {
       color: "#0e3815",
@@ -366,7 +403,7 @@ function App() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      padding: "24px",
+      padding: isMobile ? "16px" : "24px",
       fontFamily: "Arial, sans-serif",
     },
     setupCard: {
@@ -375,19 +412,25 @@ function App() {
       background: "rgba(49, 61, 49, 0.92)",
       border: "1px solid rgba(89, 90, 93, 0.16)",
       borderRadius: "22px",
-      padding: "30px",
+      padding: isMobile ? "20px" : "30px",
       boxShadow: "0 20px 50px rgba(233, 234, 232, 0.3)",
+      minWidth: 0,
     },
     setupTitle: {
-      fontSize: "42px",
+      fontSize: isMobile ? "32px" : "42px",
       fontWeight: "900",
       color: "#f8fafc",
       margin: 0,
+      wordBreak: "break-word",
+      lineHeight: isMobile ? "1.1" : "normal",
     },
     setupSubtitle: {
       marginTop: "10px",
       color: "#000000",
       marginBottom: "24px",
+      fontSize: isMobile ? "14px" : "16px",
+      wordBreak: "break-word",
+      lineHeight: "1.4",
     },
   };
 
@@ -407,7 +450,7 @@ function App() {
               <label style={styles.label}>Offense Team</label>
               <input
                 type="text"
-                placeholder="ex.KC"
+                placeholder="ex. KC"
                 value={offense}
                 onChange={(e) => setOffense(e.target.value)}
                 style={styles.input}
@@ -418,7 +461,7 @@ function App() {
               <label style={styles.label}>Defense Team</label>
               <input
                 type="text"
-                placeholder="ex.BUF"
+                placeholder="ex. BUF"
                 value={defense}
                 onChange={(e) => setDefense(e.target.value)}
                 style={styles.input}
@@ -454,17 +497,23 @@ function App() {
 
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Game Accuracy</div>
-            <div style={styles.statValue}>{formatPct(summary.game_accuracy)}</div>
+            <div style={styles.statValue}>
+              {formatPct(summary.game_accuracy)}
+            </div>
           </div>
 
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Last 5 Accuracy</div>
-            <div style={styles.statValue}>{formatPct(summary.last_5_accuracy)}</div>
+            <div style={styles.statValue}>
+              {formatPct(summary.last_5_accuracy)}
+            </div>
           </div>
 
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Last 10 Accuracy</div>
-            <div style={styles.statValue}>{formatPct(summary.last_10_accuracy)}</div>
+            <div style={styles.statValue}>
+              {formatPct(summary.last_10_accuracy)}
+            </div>
           </div>
         </div>
 
@@ -610,12 +659,21 @@ function App() {
 
         {prediction && (
           <div style={{ ...styles.card, marginBottom: "20px" }}>
-            <h2 style={styles.sectionTitle}>
+            <h2
+              style={{
+                ...styles.sectionTitle,
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                alignItems: isMobile ? "flex-start" : "center",
+              }}
+            >
               Prediction Result
               <span
                 style={{
                   ...styles.badge,
-                  background: `${getConfidenceColor(prediction.confidence_tier)}22`,
+                  background: `${getConfidenceColor(
+                    prediction.confidence_tier
+                  )}22`,
                   color: getConfidenceColor(prediction.confidence_tier),
                   border: `1px solid ${getConfidenceColor(
                     prediction.confidence_tier
@@ -652,8 +710,9 @@ function App() {
                 <h3
                   style={{
                     color: "#f8fafc",
-                    fontSize: "18px",
+                    fontSize: isMobile ? "16px" : "18px",
                     marginBottom: "14px",
+                    wordBreak: "break-word",
                   }}
                 >
                   Recommended Defensive Strategy
