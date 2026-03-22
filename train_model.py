@@ -5,7 +5,7 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
-from feature_builder import build_situational_flags
+from backend.feature_builder import build_situational_flags
 
 
 SEASONS = [2020, 2021, 2022, 2023]
