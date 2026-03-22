@@ -395,7 +395,7 @@ function App() {
     return (
       <div style={styles.setupWrap}>
         <div style={styles.setupCard}>
-          <h1 style={styles.setupTitle}>DefCoachAI</h1>
+          <h1 style={styles.setupTitle}>CoordinAIte</h1>
           <p style={styles.setupSubtitle}>
             Set the offense and defense to begin the live prediction dashboard.
           </p>
