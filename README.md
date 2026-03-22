@@ -1,1 +1,1 @@
-# football-ai
+# CoordinAIte
