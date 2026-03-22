@@ -1,0 +1,15 @@
+# Virtual environment
+nflenv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Jupyter (optional)
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
