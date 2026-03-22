@@ -1,14 +1,27 @@
 import joblib
 import pandas as pd
 
-from feature_builder import build_feature_row
-from recommendation_engine import get_defensive_recommendation
+from backend.feature_builder import build_feature_row
+from backend.recommendation_engine import get_defensive_recommendation
 
 
 def load_model_and_columns():
     model = joblib.load("play_predictor_model.pkl")
     model_columns = joblib.load("model_columns.pkl")
     return model, model_columns
+
+
+def get_confidence_info(run_probability, pass_probability):
+    confidence = max(run_probability, pass_probability)
+
+    if confidence >= 0.80:
+        tier = "STRONG"
+    elif confidence >= 0.65:
+        tier = "MODERATE"
+    else:
+        tier = "WEAK"
+
+    return round(confidence, 3), tier
 
 
 def predict_play(
@@ -55,6 +68,8 @@ def predict_play(
     run_probability = float(prob[0])
     pass_probability = float(prob[1])
 
+    confidence, confidence_tier = get_confidence_info(run_probability, pass_probability)
+
     recommendation = get_defensive_recommendation(
         prediction=prediction,
         run_prob=run_probability,
@@ -69,40 +84,37 @@ def predict_play(
         "prediction": prediction,
         "run_probability": run_probability,
         "pass_probability": pass_probability,
+        "confidence": confidence,
+        "confidence_tier": confidence_tier,
         "game_pass_rate_used": round(game_pass_rate, 3),
         "drive_pass_rate_used": round(drive_pass_rate, 3),
         "recommendation": recommendation,
     }
 
 
-if __name__ == "__main__":
-    print("Enter current game situation:\n")
-
-    down = int(input("Down: "))
-    ydstogo = int(input("Yards to go: "))
-    yardline_100 = int(input("Yardline_100: "))
-    game_seconds_remaining = int(input("Game seconds remaining: "))
-    qtr = int(input("Quarter: "))
-    score_differential = int(input("Score differential (offense perspective): "))
-    posteam = input("Offense team abbreviation (e.g. KC): ").strip().upper()
-    defteam = input("Defense team abbreviation (e.g. BUF): ").strip().upper()
-    prev_play_pass = int(input("Was previous play a pass? (1=yes, 0=no): "))
-    game_pass_rate = float(input("Current game pass rate so far (default 0.5 if unknown): ") or 0.5)
-    drive_pass_rate = float(input("Current drive pass rate so far (default 0.5 if unknown): ") or 0.5)
-
-    result = predict_play(
+def predict_next_play(
+    down,
+    ydstogo,
+    yardline,
+    time_remaining,
+    quarter,
+    score_diff,
+    posteam,
+    defteam,
+    prev_play_pass,
+    game_pass_rate=0.5,
+    drive_pass_rate=0.5
+):
+    return predict_play(
         down=down,
         ydstogo=ydstogo,
-        yardline_100=yardline_100,
-        game_seconds_remaining=game_seconds_remaining,
-        qtr=qtr,
-        score_differential=score_differential,
+        yardline_100=yardline,
+        game_seconds_remaining=time_remaining,
+        qtr=quarter,
+        score_differential=score_diff,
         posteam=posteam,
         defteam=defteam,
         prev_play_pass=prev_play_pass,
         game_pass_rate=game_pass_rate,
         drive_pass_rate=drive_pass_rate
     )
-
-    print("\nPrediction Result:")
-    print(result)
