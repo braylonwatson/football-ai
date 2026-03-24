@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -47,7 +47,7 @@ function App() {
   const [historyGames, setHistoryGames] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-  const refreshData = async () => {
+  const refreshData = (async () => {
     try {
       const pendingRes = await fetch(`${API}/pending`);
       const playLogRes = await fetch(`${API}/play-log`);
@@ -63,7 +63,7 @@ function App() {
     } catch (error) {
       console.error("Error refreshing data:", error);
     }
-  };
+  },[user, isGuest]);
 
   const fetchUserGames = async (userId) => {
     if (!userId) return;
