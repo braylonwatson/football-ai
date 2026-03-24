@@ -102,7 +102,7 @@ function App() {
     }
 
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [refreshData, user, isGuest]);
 
   const userGames = useMemo(() => historyGames, [historyGames]);
 
