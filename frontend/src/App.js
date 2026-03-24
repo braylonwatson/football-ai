@@ -1,11 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API = process.env.REACT_APP_API_URL;
 
 function App() {
+  const [screen, setScreen] = useState("authChoice");
+  const [authMode, setAuthMode] = useState("login");
   const [teamsSet, setTeamsSet] = useState(false);
   const [offense, setOffense] = useState("");
   const [defense, setDefense] = useState("");
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem("coordinaite_current_user");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isGuest, setIsGuest] = useState(() => {
+    return localStorage.getItem("coordinaite_guest") === "true";
+  });
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authForm, setAuthForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
 
   const [form, setForm] = useState({
     down: 1,
@@ -24,6 +44,7 @@ function App() {
   const [actualPlayType, setActualPlayType] = useState("RUN");
   const [yardsGained, setYardsGained] = useState(0);
 
+  const [historyGames, setHistoryGames] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
   const refreshData = async () => {
@@ -44,14 +65,173 @@ function App() {
     }
   };
 
+  const fetchUserGames = async (userId) => {
+    if (!userId) return;
+    try {
+      const res = await fetch(`${API}/games/${userId}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const sorted = [...data].sort((a, b) => {
+          const aTime = new Date(a.updated_at || a.updatedAt || 0).getTime();
+          const bTime = new Date(b.updated_at || b.updatedAt || 0).getTime();
+          return bTime - aTime;
+        });
+        setHistoryGames(sorted);
+      } else {
+        setHistoryGames([]);
+      }
+    } catch (error) {
+      console.error("Error fetching games:", error);
+      setHistoryGames([]);
+    }
+  };
+
   useEffect(() => {
     refreshData();
 
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener("resize", handleResize);
 
+    if (user) {
+      setIsGuest(false);
+      fetchUserGames(user.user_id);
+    }
+
+    if (user || isGuest) {
+      setScreen("teamSetup");
+    }
+
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  const userGames = useMemo(() => historyGames, [historyGames]);
+
+  const resetGameState = () => {
+    setForm({
+      down: 1,
+      ydstogo: 10,
+      yardline_100: 50,
+      game_seconds_remaining: 900,
+      qtr: 1,
+      score_differential: 0,
+    });
+    setPrediction(null);
+    setPending({});
+    setPlayLog([]);
+    setSummary({});
+    setActualPlayType("RUN");
+    setYardsGained(0);
+    setOffense("");
+    setDefense("");
+    setTeamsSet(false);
+  };
+
+  const handleContinueAsGuest = () => {
+    setIsGuest(true);
+    setUser(null);
+    setAuthError("");
+    localStorage.setItem("coordinaite_guest", "true");
+    localStorage.removeItem("coordinaite_current_user");
+    setScreen("teamSetup");
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+
+    const email = authForm.email.trim().toLowerCase();
+    const password = authForm.password;
+    const name = authForm.name.trim();
+
+    if (!email || !password || (authMode === "signup" && !name)) {
+      setAuthError("Please fill out all required fields.");
+      return;
+    }
+
+    try {
+      if (authMode === "signup") {
+        const res = await fetch(`${API}/signup`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: name,
+            email,
+            password,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setAuthError(data.detail || "Unable to create account.");
+          return;
+        }
+
+        const newUser = {
+          user_id: data.user_id,
+          name: data.username,
+          email,
+        };
+
+        localStorage.setItem("coordinaite_current_user", JSON.stringify(newUser));
+        localStorage.removeItem("coordinaite_guest");
+        setUser(newUser);
+        setIsGuest(false);
+        setAuthForm({ name: "", email: "", password: "" });
+        setScreen("teamSetup");
+        fetchUserGames(newUser.user_id);
+        return;
+      }
+
+      const res = await fetch(`${API}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setAuthError(data.detail || "Invalid email or password.");
+        return;
+      }
+
+      const existingUser = {
+        user_id: data.user_id,
+        name: data.username,
+        email,
+      };
+
+      localStorage.setItem("coordinaite_current_user", JSON.stringify(existingUser));
+      localStorage.removeItem("coordinaite_guest");
+      setUser(existingUser);
+      setIsGuest(false);
+      setAuthForm({ name: "", email: "", password: "" });
+      setScreen("teamSetup");
+      fetchUserGames(existingUser.user_id);
+    } catch (error) {
+      console.error("Auth error:", error);
+      setAuthError("Could not connect to the server.");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("coordinaite_current_user");
+    localStorage.removeItem("coordinaite_guest");
+    setUser(null);
+    setIsGuest(false);
+    setHistoryGames([]);
+    setShowSavePrompt(false);
+    resetGameState();
+    setScreen("authChoice");
+  };
 
   const handleSetTeams = async () => {
     try {
@@ -65,6 +245,7 @@ function App() {
 
       if (res.ok) {
         setTeamsSet(true);
+        setScreen("dashboard");
       }
     } catch (error) {
       console.error("Error setting teams:", error);
@@ -123,6 +304,113 @@ function App() {
     }
   };
 
+  const buildGameSnapshot = () => ({
+    offense,
+    defense,
+    form,
+    prediction,
+    pending,
+    play_log: playLog,
+    summary,
+    actualPlayType,
+    yardsGained,
+    teamsSet: true,
+  });
+
+  const handleSaveGame = async () => {
+    if (!user) {
+      setShowSavePrompt(true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/games`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user.user_id,
+          title: `${offense || "Offense"} vs ${defense || "Defense"}`,
+          game_state: buildGameSnapshot(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error(data.detail || "Save failed");
+        return;
+      }
+
+      await fetchUserGames(user.user_id);
+      resetGameState();
+      setScreen("teamSetup");
+    } catch (error) {
+      console.error("Error saving game:", error);
+    }
+  };
+
+  const handleResumeGame = async (game) => {
+    try {
+      const res = await fetch(`${API}/games/load`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ game_id: game.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error(data.detail || "Load failed");
+        return;
+      }
+
+      const loaded = data.state || {};
+      setOffense(loaded.offense || "");
+      setDefense(loaded.defense || "");
+      setForm(
+        loaded.form || {
+          down: 1,
+          ydstogo: 10,
+          yardline_100: 50,
+          game_seconds_remaining: 900,
+          qtr: 1,
+          score_differential: 0,
+        }
+      );
+      setPrediction(loaded.prediction || null);
+      setPending(loaded.pending || {});
+      setPlayLog(loaded.play_log || []);
+      setSummary(loaded.summary || {});
+      setActualPlayType(loaded.actualPlayType || "RUN");
+      setYardsGained(loaded.yardsGained ?? 0);
+      setTeamsSet(true);
+      setScreen("dashboard");
+      refreshData();
+    } catch (error) {
+      console.error("Error resuming game:", error);
+    }
+  };
+
+  const handleDeleteGame = async (gameId) => {
+    if (!user) return;
+
+    try {
+      const res = await fetch(`${API}/games/${gameId}?user_id=${user.user_id}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        fetchUserGames(user.user_id);
+      }
+    } catch (error) {
+      console.error("Error deleting game:", error);
+    }
+  };
+
   const formatPct = (value) => {
     if (value == null) return "N/A";
     return `${(value * 100).toFixed(1)}%`;
@@ -146,6 +434,20 @@ function App() {
     container: {
       maxWidth: "1400px",
       margin: "0 auto",
+    },
+    topBar: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: isMobile ? "flex-start" : "center",
+      flexDirection: isMobile ? "column" : "row",
+      gap: "14px",
+      marginBottom: "18px",
+    },
+    topBarRight: {
+      display: "flex",
+      gap: "10px",
+      flexWrap: "wrap",
+      width: isMobile ? "100%" : "auto",
     },
     hero: {
       background:
@@ -392,7 +694,7 @@ function App() {
       whiteSpace: isMobile ? "nowrap" : "normal",
     },
     empty: {
-      color: "#0e3815",
+      color: "#b8c5b8",
       fontSize: "15px",
       margin: 0,
     },
@@ -432,9 +734,64 @@ function App() {
       wordBreak: "break-word",
       lineHeight: "1.4",
     },
+    authMiniText: {
+      color: "#d3d7d4",
+      fontSize: "13px",
+      marginTop: "12px",
+      marginBottom: 0,
+      lineHeight: "1.5",
+    },
+    authTabs: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "20px",
+      flexDirection: isMobile ? "column" : "row",
+    },
+    statusPill: {
+      display: "inline-block",
+      borderRadius: "999px",
+      padding: "7px 12px",
+      fontSize: "12px",
+      fontWeight: "800",
+      background: "rgba(37, 235, 60, 0.12)",
+      color: "#dfffe2",
+      border: "1px solid rgba(37, 235, 60, 0.35)",
+    },
+    modalOverlay: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0, 0, 0, 0.65)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "16px",
+      zIndex: 1000,
+    },
+    modalCard: {
+      width: "100%",
+      maxWidth: "460px",
+      background: "rgba(25, 33, 25, 0.98)",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      borderRadius: "20px",
+      padding: isMobile ? "20px" : "24px",
+      boxShadow: "0 20px 50px rgba(0, 0, 0, 0.45)",
+    },
+    gameCard: {
+      background: "rgba(0, 0, 0, 0.82)",
+      border: "1px solid rgba(255, 255, 255, 0.12)",
+      borderRadius: "18px",
+      padding: isMobile ? "16px" : "18px",
+      marginBottom: "14px",
+    },
+    gameMeta: {
+      color: "#b8c5b8",
+      fontSize: "13px",
+      marginTop: "6px",
+      lineHeight: "1.5",
+    },
   };
 
-  if (!teamsSet) {
+  if (screen === "authChoice") {
     return (
       <div style={styles.setupWrap}>
         <div style={styles.setupCard}>
@@ -442,8 +799,138 @@ function App() {
             Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
           </h1>
           <p style={styles.setupSubtitle}>
-            Set the offense and defense to begin the live prediction dashboard.
+            Your live AI play predictor!
           </p>
+
+          <div style={styles.authTabs}>
+            <button
+              onClick={() => {
+                setAuthMode("login");
+                setAuthError("");
+              }}
+              style={authMode === "login" ? styles.buttonPrimary : styles.buttonSecondary}
+            >
+              Login
+            </button>
+            <button
+              onClick={() => {
+                setAuthMode("signup");
+                setAuthError("");
+              }}
+              style={authMode === "signup" ? styles.buttonPrimary : styles.buttonSecondary}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form onSubmit={handleAuthSubmit}>
+            {authMode === "signup" && (
+              <div style={{ marginBottom: "16px" }}>
+                <label style={styles.label}>Name</label>
+                <input
+                  type="text"
+                  value={authForm.name}
+                  onChange={(e) =>
+                    setAuthForm({ ...authForm, name: e.target.value })
+                  }
+                  placeholder="Your name"
+                  style={styles.input}
+                />
+              </div>
+            )}
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={styles.label}>Email</label>
+              <input
+                type="email"
+                value={authForm.email}
+                onChange={(e) =>
+                  setAuthForm({ ...authForm, email: e.target.value })
+                }
+                placeholder="you@example.com"
+                style={styles.input}
+              />
+            </div>
+
+            <div>
+              <label style={styles.label}>Password</label>
+              <input
+                type="password"
+                value={authForm.password}
+                onChange={(e) =>
+                  setAuthForm({ ...authForm, password: e.target.value })
+                }
+                placeholder="Enter password"
+                style={styles.input}
+              />
+            </div>
+
+            {authError && (
+              <div style={{ ...styles.reasonBox, color: "#fca5a5" }}>{authError}</div>
+            )}
+
+            <div style={styles.buttonRow}>
+              <button type="submit" style={styles.buttonPrimary}>
+                {authMode === "login" ? "Enter Account" : "Create Account"}
+              </button>
+              <button
+                type="button"
+                onClick={handleContinueAsGuest}
+                style={styles.buttonSecondary}
+              >
+                Continue as Guest
+              </button>
+            </div>
+          </form>
+
+          <p style={styles.authMiniText}>
+            Guests can still use the prediction dashboard, but saved games and
+            account history are only available after login.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "teamSetup" && !teamsSet) {
+    return (
+      <div style={styles.setupWrap}>
+        <div style={styles.setupCard}>
+          <div style={styles.topBar}>
+            <div>
+              <h1 style={styles.setupTitle}>
+                Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
+              </h1>
+              <p style={styles.setupSubtitle}>
+                Set the offense and defense to begin the live prediction dashboard.
+              </p>
+            </div>
+            <div style={styles.topBarRight}>
+              <span style={styles.statusPill}>
+                {user ? `Logged in as ${user.name}` : "Guest Mode"}
+              </span>
+              {user ? (
+                <>
+                  <button
+                    onClick={() => setScreen("history")}
+                    style={styles.buttonSecondary}
+                  >
+                    History
+                  </button>
+                  <button onClick={handleLogout} style={styles.buttonSecondary}>
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setScreen("authChoice")}
+                  style={styles.buttonSecondary}
+                >
+                  Login / Sign Up
+                </button>
+              )}
+            </div>
+          </div>
 
           <div style={styles.grid2}>
             <div>
@@ -473,6 +960,80 @@ function App() {
             <button onClick={handleSetTeams} style={styles.buttonPrimary}>
               Launch Dashboard
             </button>
+            {user && (
+              <button
+                onClick={() => setScreen("history")}
+                style={styles.buttonSecondary}
+              >
+                View Saved Games
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "history") {
+    return (
+      <div style={styles.page}>
+        <div style={styles.container}>
+          <div style={styles.topBar}>
+            <div>
+              <h1 style={styles.heroTitle}>Saved Game History</h1>
+              <div style={styles.heroSubtitle}>
+                Resume prior game states or remove old saves from your account.
+              </div>
+            </div>
+            <div style={styles.topBarRight}>
+              <button
+                onClick={() => setScreen(teamsSet ? "dashboard" : "teamSetup")}
+                style={styles.buttonSecondary}
+              >
+                Back
+              </button>
+              <button onClick={handleLogout} style={styles.buttonSecondary}>
+                Logout
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            {userGames.length === 0 ? (
+              <p style={styles.empty}>No saved games yet.</p>
+            ) : (
+              userGames.map((game) => (
+                <div key={game.id} style={styles.gameCard}>
+                  <h3 style={{ margin: 0, color: "#f8fafc" }}>{game.title}</h3>
+                  <div style={styles.gameMeta}>
+                    Saved:{" "}
+                    {new Date(
+                      game.updated_at || game.updatedAt || game.created_at || Date.now()
+                    ).toLocaleString()}
+                    <br />
+                    Quarter: {game.game_state?.form?.qtr ?? "N/A"} | Down:{" "}
+                    {game.game_state?.form?.down ?? "N/A"} | Distance:{" "}
+                    {game.game_state?.form?.ydstogo ?? "N/A"}
+                    <br />
+                    Logged Plays: {game.game_state?.play_log?.length ?? 0}
+                  </div>
+                  <div style={styles.buttonRow}>
+                    <button
+                      onClick={() => handleResumeGame(game)}
+                      style={styles.buttonPrimary}
+                    >
+                      Resume Game
+                    </button>
+                    <button
+                      onClick={() => handleDeleteGame(game.id)}
+                      style={styles.buttonSecondary}
+                    >
+                      Delete Save
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -482,6 +1043,42 @@ function App() {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
+        <div style={styles.topBar}>
+          <div style={styles.topBarRight}>
+            <span style={styles.statusPill}>
+              {user ? `Account: ${user.name}` : "Guest Session"}
+            </span>
+          </div>
+          <div style={styles.topBarRight}>
+            <button
+              onClick={() => {
+                resetGameState();
+                setScreen("teamSetup");
+              }}
+              style={styles.buttonSecondary}
+            >
+              Home
+            </button>
+            {user && (
+              <button onClick={() => setScreen("history")} style={styles.buttonSecondary}>
+                History
+              </button>
+            )}
+            {user ? (
+              <button onClick={handleLogout} style={styles.buttonSecondary}>
+                Logout
+              </button>
+            ) : (
+              <button
+                onClick={() => setScreen("authChoice")}
+                style={styles.buttonSecondary}
+              >
+                Login / Sign Up
+              </button>
+            )}
+          </div>
+        </div>
+
         <div style={styles.hero}>
           <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
           <div style={styles.heroSubtitle}>
@@ -497,23 +1094,17 @@ function App() {
 
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Game Accuracy</div>
-            <div style={styles.statValue}>
-              {formatPct(summary.game_accuracy)}
-            </div>
+            <div style={styles.statValue}>{formatPct(summary.game_accuracy)}</div>
           </div>
 
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Last 5 Accuracy</div>
-            <div style={styles.statValue}>
-              {formatPct(summary.last_5_accuracy)}
-            </div>
+            <div style={styles.statValue}>{formatPct(summary.last_5_accuracy)}</div>
           </div>
 
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Last 10 Accuracy</div>
-            <div style={styles.statValue}>
-              {formatPct(summary.last_10_accuracy)}
-            </div>
+            <div style={styles.statValue}>{formatPct(summary.last_10_accuracy)}</div>
           </div>
         </div>
 
@@ -608,6 +1199,9 @@ function App() {
               <button onClick={handleNewDrive} style={styles.buttonSecondary}>
                 Start New Drive
               </button>
+              <button onClick={handleSaveGame} style={styles.buttonSecondary}>
+                Save Game
+              </button>
             </div>
           </div>
 
@@ -671,13 +1265,9 @@ function App() {
               <span
                 style={{
                   ...styles.badge,
-                  background: `${getConfidenceColor(
-                    prediction.confidence_tier
-                  )}22`,
+                  background: `${getConfidenceColor(prediction.confidence_tier)}22`,
                   color: getConfidenceColor(prediction.confidence_tier),
-                  border: `1px solid ${getConfidenceColor(
-                    prediction.confidence_tier
-                  )}55`,
+                  border: `1px solid ${getConfidenceColor(prediction.confidence_tier)}55`,
                 }}
               >
                 {prediction.confidence_tier}
@@ -763,8 +1353,7 @@ function App() {
                 </div>
 
                 <div style={styles.reasonBox}>
-                  <strong>Reason:</strong>{" "}
-                  {prediction.defensive_strategy.reason}
+                  <strong>Reason:</strong> {prediction.defensive_strategy.reason}
                 </div>
               </>
             )}
@@ -810,9 +1399,49 @@ function App() {
           )}
         </div>
       </div>
+
+      {showSavePrompt && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <h2 style={styles.sectionTitle}>Save Game</h2>
+            <p style={{ ...styles.empty, lineHeight: "1.6" }}>
+              Create an account or log in to save your game and view history later.
+            </p>
+            <div style={styles.buttonRow}>
+              <button
+                onClick={() => {
+                  setAuthMode("login");
+                  setShowSavePrompt(false);
+                  setScreen("authChoice");
+                }}
+                style={styles.buttonPrimary}
+              >
+                Login
+              </button>
+              <button
+                onClick={() => {
+                  setAuthMode("signup");
+                  setShowSavePrompt(false);
+                  setScreen("authChoice");
+                }}
+                style={styles.buttonSecondary}
+              >
+                Sign Up
+              </button>
+              <button
+                onClick={() => setShowSavePrompt(false)}
+                style={styles.buttonSecondary}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default App;
+
 

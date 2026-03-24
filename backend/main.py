@@ -1,8 +1,54 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
 from game_tracker import GameTracker
+
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, JSON
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+from passlib.hash import pbkdf2_sha256
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+
+def hash_password(password: str):
+    return pbkdf2_sha256.hash(password)
+
+
+def verify_password(password: str, hashed: str):
+    return pbkdf2_sha256.verify(password, hashed)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+
+
+class SavedGame(Base):
+    __tablename__ = "saved_games"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    game_state = Column(JSON, nullable=False)
+
+    user = relationship("User")
+
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Football AI Backend")
 tracker = GameTracker()
@@ -33,12 +79,150 @@ class PredictRequest(BaseModel):
 class LogPlayRequest(BaseModel):
     actual_play_type: str
     yards_gained: float
-    epa: float | None = None
+    epa: Optional[float] = None
+
+
+class SignupRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class SaveGameRequest(BaseModel):
+    user_id: int
+    title: str
+    game_state: dict
+
+
+class LoadGameRequest(BaseModel):
+    game_id: int
 
 
 @app.get("/")
 def root():
     return {"message": "Football AI backend is running"}
+
+
+@app.post("/signup")
+def signup(data: SignupRequest):
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.email == data.email).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="User already exists")
+
+        user = User(
+            username=data.username,
+            email=data.email,
+            password_hash=hash_password(data.password),
+        )
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return {"user_id": user.id, "username": user.username}
+    finally:
+        db.close()
+
+
+@app.post("/login")
+def login(data: LoginRequest):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == data.email).first()
+
+        if not user or not verify_password(data.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        return {"user_id": user.id, "username": user.username}
+    finally:
+        db.close()
+
+
+@app.post("/games")
+def save_game(data: SaveGameRequest):
+    db = SessionLocal()
+    try:
+        game = SavedGame(
+            user_id=data.user_id,
+            title=data.title,
+            game_state=data.game_state,
+        )
+
+        db.add(game)
+        db.commit()
+        db.refresh(game)
+
+        return {"game_id": game.id}
+    finally:
+        db.close()
+
+
+@app.get("/games/{user_id}")
+def get_games(user_id: int):
+    db = SessionLocal()
+    try:
+        games = db.query(SavedGame).filter(SavedGame.user_id == user_id).all()
+
+        return [
+            {
+                "id": game.id,
+                "user_id": game.user_id,
+                "title": game.title,
+                "game_state": game.game_state,
+            }
+            for game in games
+        ]
+    finally:
+        db.close()
+
+
+@app.post("/games/load")
+def load_game(data: LoadGameRequest):
+    db = SessionLocal()
+    try:
+        game = db.query(SavedGame).filter(SavedGame.id == data.game_id).first()
+
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        state = game.game_state
+
+        tracker.offense = state.get("offense")
+        tracker.defense = state.get("defense")
+        tracker.play_log = state.get("play_log", [])
+        tracker.current_drive_number = state.get("current_drive_number", 1)
+
+        return {"message": "Game loaded", "state": state}
+    finally:
+        db.close()
+
+
+@app.delete("/games/{game_id}")
+def delete_game(game_id: int, user_id: int):
+    db = SessionLocal()
+    try:
+        game = (
+            db.query(SavedGame)
+            .filter(SavedGame.id == game_id, SavedGame.user_id == user_id)
+            .first()
+        )
+
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        db.delete(game)
+        db.commit()
+
+        return {"message": "Game deleted"}
+    finally:
+        db.close()
 
 
 @app.post("/set-teams")
