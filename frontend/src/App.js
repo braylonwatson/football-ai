@@ -47,7 +47,7 @@ function App() {
   const [historyGames, setHistoryGames] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-  const refreshData = (async () => {
+  const refreshData = useCallback(async () => {
     try {
       const pendingRes = await fetch(`${API}/pending`);
       const playLogRes = await fetch(`${API}/play-log`);
@@ -63,7 +63,7 @@ function App() {
     } catch (error) {
       console.error("Error refreshing data:", error);
     }
-  },[user, isGuest]);
+  },[]);
 
   const fetchUserGames = async (userId) => {
     if (!userId) return;
