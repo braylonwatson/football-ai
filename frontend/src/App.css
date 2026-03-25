@@ -1,5 +1,7 @@
 .App {
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .App-logo {
@@ -13,8 +15,20 @@
   }
 }
 
+body {
+  margin: 0;
+  background: #000000;
+  overflow-x: hidden;
+}
+
+#root {
+  position: relative;
+  min-height: 100vh;
+  z-index: 1;
+}
+
 .App-header {
-  background-color: #282c34;
+  background-color: transparent;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -25,7 +39,7 @@
 }
 
 .App-link {
-  color: #61dafb;
+  color: #00ff88;
 }
 
 @keyframes App-logo-spin {
@@ -35,4 +49,13 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+#tsparticles {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
 }

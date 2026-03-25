@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import BackgroundParticles from "./BackgroundParticles";
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -63,7 +64,7 @@ function App() {
     } catch (error) {
       console.error("Error refreshing data:", error);
     }
-  },[]);
+  }, []);
 
   const fetchUserGames = async (userId) => {
     if (!userId) return;
@@ -425,15 +426,19 @@ function App() {
   const styles = {
     page: {
       minHeight: "100vh",
-      background:
-        "linear-gradient(180deg, #000000 0%, #000000 45%, #080808 100%)",
+      background: "transparent",
+        
       color: "#f5f5f5",
       fontFamily: "Arial, sans-serif",
       padding: isMobile ? "16px" : "28px",
+      position: "relative",
+      zIndex: 1,
     },
     container: {
       maxWidth: "1400px",
       margin: "0 auto",
+      position: "relative",
+      zIndex: 1,
     },
     topBar: {
       display: "flex",
@@ -700,13 +705,15 @@ function App() {
     },
     setupWrap: {
       minHeight: "100vh",
-      background:
-        "linear-gradient(180deg, #171e19 0%, #6bac6d 45%, #131b14 100%)",
+      background: "transparent",
+        
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       padding: isMobile ? "16px" : "24px",
       fontFamily: "Arial, sans-serif",
+      position: "relative",
+      zIndex: 1,
     },
     setupCard: {
       width: "100%",
@@ -793,134 +800,292 @@ function App() {
 
   if (screen === "authChoice") {
     return (
-      <div style={styles.setupWrap}>
-        <div style={styles.setupCard}>
-          <h1 style={styles.setupTitle}>
-            Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
-          </h1>
-          <p style={styles.setupSubtitle}>
-            Your live AI play predictor!
-          </p>
+      <>
+        <BackgroundParticles />
+        <div style={styles.setupWrap}>
+          <div style={styles.setupCard}>
+            <h1 style={styles.setupTitle}>
+              Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
+            </h1>
+            <p style={styles.setupSubtitle}>
+              Your live AI play predictor!
+            </p>
 
-          <div style={styles.authTabs}>
-            <button
-              onClick={() => {
-                setAuthMode("login");
-                setAuthError("");
-              }}
-              style={authMode === "login" ? styles.buttonPrimary : styles.buttonSecondary}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => {
-                setAuthMode("signup");
-                setAuthError("");
-              }}
-              style={authMode === "signup" ? styles.buttonPrimary : styles.buttonSecondary}
-            >
-              Sign Up
-            </button>
-          </div>
+            <div style={styles.authTabs}>
+              <button
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+                style={authMode === "login" ? styles.buttonPrimary : styles.buttonSecondary}
+              >
+                Login
+              </button>
+              <button
+                onClick={() => {
+                  setAuthMode("signup");
+                  setAuthError("");
+                }}
+                style={authMode === "signup" ? styles.buttonPrimary : styles.buttonSecondary}
+              >
+                Sign Up
+              </button>
+            </div>
 
-          <form onSubmit={handleAuthSubmit}>
-            {authMode === "signup" && (
+            <form onSubmit={handleAuthSubmit}>
+              {authMode === "signup" && (
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={styles.label}>Name</label>
+                  <input
+                    type="text"
+                    value={authForm.name}
+                    onChange={(e) =>
+                      setAuthForm({ ...authForm, name: e.target.value })
+                    }
+                    placeholder="Your name"
+                    style={styles.input}
+                  />
+                </div>
+              )}
+
               <div style={{ marginBottom: "16px" }}>
-                <label style={styles.label}>Name</label>
+                <label style={styles.label}>Email</label>
                 <input
-                  type="text"
-                  value={authForm.name}
+                  type="email"
+                  value={authForm.email}
                   onChange={(e) =>
-                    setAuthForm({ ...authForm, name: e.target.value })
+                    setAuthForm({ ...authForm, email: e.target.value })
                   }
-                  placeholder="Your name"
+                  placeholder="you@example.com"
                   style={styles.input}
                 />
               </div>
-            )}
 
-            <div style={{ marginBottom: "16px" }}>
-              <label style={styles.label}>Email</label>
-              <input
-                type="email"
-                value={authForm.email}
-                onChange={(e) =>
-                  setAuthForm({ ...authForm, email: e.target.value })
-                }
-                placeholder="you@example.com"
-                style={styles.input}
-              />
-            </div>
+              <div>
+                <label style={styles.label}>Password</label>
+                <input
+                  type="password"
+                  value={authForm.password}
+                  onChange={(e) =>
+                    setAuthForm({ ...authForm, password: e.target.value })
+                  }
+                  placeholder="Enter password"
+                  style={styles.input}
+                />
+              </div>
 
-            <div>
-              <label style={styles.label}>Password</label>
-              <input
-                type="password"
-                value={authForm.password}
-                onChange={(e) =>
-                  setAuthForm({ ...authForm, password: e.target.value })
-                }
-                placeholder="Enter password"
-                style={styles.input}
-              />
-            </div>
+              {authError && (
+                <div style={{ ...styles.reasonBox, color: "#fca5a5" }}>{authError}</div>
+              )}
 
-            {authError && (
-              <div style={{ ...styles.reasonBox, color: "#fca5a5" }}>{authError}</div>
-            )}
+              <div style={styles.buttonRow}>
+                <button type="submit" style={styles.buttonPrimary}>
+                  {authMode === "login" ? "Enter Account" : "Create Account"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContinueAsGuest}
+                  style={styles.buttonSecondary}
+                >
+                  Continue as Guest
+                </button>
+              </div>
+            </form>
 
-            <div style={styles.buttonRow}>
-              <button type="submit" style={styles.buttonPrimary}>
-                {authMode === "login" ? "Enter Account" : "Create Account"}
-              </button>
-              <button
-                type="button"
-                onClick={handleContinueAsGuest}
-                style={styles.buttonSecondary}
-              >
-                Continue as Guest
-              </button>
-            </div>
-          </form>
-
-          <p style={styles.authMiniText}>
-            Guests can still use the prediction dashboard, but saved games and
-            account history are only available after login.
-          </p>
+            <p style={styles.authMiniText}>
+              Guests can still use the prediction dashboard, but saved games and
+              account history are only available after login.
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (screen === "teamSetup" && !teamsSet) {
     return (
-      <div style={styles.setupWrap}>
-        <div style={styles.setupCard}>
-          <div style={styles.topBar}>
-            <div>
-              <h1 style={styles.setupTitle}>
-                Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
-              </h1>
-              <p style={styles.setupSubtitle}>
-                Set the offense and defense to begin the live prediction dashboard.
-              </p>
-            </div>
-            <div style={styles.topBarRight}>
-              <span style={styles.statusPill}>
-                {user ? `Logged in as ${user.name}` : "Guest Mode"}
-              </span>
-              {user ? (
-                <>
+      <>
+        <BackgroundParticles />
+        <div style={styles.setupWrap}>
+          <div style={styles.setupCard}>
+            <div style={styles.topBar}>
+              <div>
+                <h1 style={styles.setupTitle}>
+                  Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
+                </h1>
+                <p style={styles.setupSubtitle}>
+                  Set the offense and defense to begin the live prediction dashboard.
+                </p>
+              </div>
+              <div style={styles.topBarRight}>
+                <span style={styles.statusPill}>
+                  {user ? `Logged in as ${user.name}` : "Guest Mode"}
+                </span>
+                {user ? (
+                  <>
+                    <button
+                      onClick={() => setScreen("history")}
+                      style={styles.buttonSecondary}
+                    >
+                      History
+                    </button>
+                    <button onClick={handleLogout} style={styles.buttonSecondary}>
+                      Logout
+                    </button>
+                  </>
+                ) : (
                   <button
-                    onClick={() => setScreen("history")}
+                    onClick={() => setScreen("authChoice")}
                     style={styles.buttonSecondary}
                   >
-                    History
+                    Login / Sign Up
                   </button>
-                  <button onClick={handleLogout} style={styles.buttonSecondary}>
-                    Logout
-                  </button>
-                </>
+                )}
+              </div>
+            </div>
+
+            <div style={styles.grid2}>
+              <div>
+                <label style={styles.label}>Offense Team</label>
+                <input
+                  type="text"
+                  placeholder="ex. KC"
+                  value={offense}
+                  onChange={(e) => setOffense(e.target.value)}
+                  style={styles.input}
+                />
+              </div>
+
+              <div>
+                <label style={styles.label}>Defense Team</label>
+                <input
+                  type="text"
+                  placeholder="ex. BUF"
+                  value={defense}
+                  onChange={(e) => setDefense(e.target.value)}
+                  style={styles.input}
+                />
+              </div>
+            </div>
+
+            <div style={styles.buttonRow}>
+              <button onClick={handleSetTeams} style={styles.buttonPrimary}>
+                Launch Dashboard
+              </button>
+              {user && (
+                <button
+                  onClick={() => setScreen("history")}
+                  style={styles.buttonSecondary}
+                >
+                  View Saved Games
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (screen === "history") {
+    return (
+      <>
+        <BackgroundParticles />
+        <div style={styles.page}>
+          <div style={styles.container}>
+            <div style={styles.topBar}>
+              <div>
+                <h1 style={styles.heroTitle}>Saved Game History</h1>
+                <div style={styles.heroSubtitle}>
+                  Resume prior game states or remove old saves from your account.
+                </div>
+              </div>
+              <div style={styles.topBarRight}>
+                <button
+                  onClick={() => setScreen(teamsSet ? "dashboard" : "teamSetup")}
+                  style={styles.buttonSecondary}
+                >
+                  Back
+                </button>
+                <button onClick={handleLogout} style={styles.buttonSecondary}>
+                  Logout
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.card}>
+              {userGames.length === 0 ? (
+                <p style={styles.empty}>No saved games yet.</p>
+              ) : (
+                userGames.map((game) => (
+                  <div key={game.id} style={styles.gameCard}>
+                    <h3 style={{ margin: 0, color: "#f8fafc" }}>{game.title}</h3>
+                    <div style={styles.gameMeta}>
+                      Saved:{" "}
+                      {new Date(
+                        game.updated_at || game.updatedAt || game.created_at || Date.now()
+                      ).toLocaleString()}
+                      <br />
+                      Quarter: {game.game_state?.form?.qtr ?? "N/A"} | Down:{" "}
+                      {game.game_state?.form?.down ?? "N/A"} | Distance:{" "}
+                      {game.game_state?.form?.ydstogo ?? "N/A"}
+                      <br />
+                      Logged Plays: {game.game_state?.play_log?.length ?? 0}
+                    </div>
+                    <div style={styles.buttonRow}>
+                      <button
+                        onClick={() => handleResumeGame(game)}
+                        style={styles.buttonPrimary}
+                      >
+                        Resume Game
+                      </button>
+                      <button
+                        onClick={() => handleDeleteGame(game.id)}
+                        style={styles.buttonSecondary}
+                      >
+                        Delete Save
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <BackgroundParticles />
+      <div style={styles.page}>
+        <div style={styles.container}>
+          <div style={styles.topBar}>
+            <div style={styles.topBarRight}>
+              <span style={styles.statusPill}>
+                {user ? `Account: ${user.name}` : "Guest Session"}
+              </span>
+            </div>
+            <div style={styles.topBarRight}>
+              <button
+                onClick={() => {
+                  resetGameState();
+                  setScreen("teamSetup");
+                }}
+                style={styles.buttonSecondary}
+              >
+                Home
+              </button>
+              {user && (
+                <button onClick={() => setScreen("history")} style={styles.buttonSecondary}>
+                  History
+                </button>
+              )}
+              {user ? (
+                <button onClick={handleLogout} style={styles.buttonSecondary}>
+                  Logout
+                </button>
               ) : (
                 <button
                   onClick={() => setScreen("authChoice")}
@@ -932,513 +1097,367 @@ function App() {
             </div>
           </div>
 
+          <div style={styles.hero}>
+            <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
+            <div style={styles.heroSubtitle}>
+              Live play prediction, defensive recommendation, and in-game tracking
+            </div>
+          </div>
+
+          <div style={styles.statGrid}>
+            <div style={styles.statCard}>
+              <div style={styles.statLabel}>Total Predictions</div>
+              <div style={styles.statValue}>{summary.total_predictions ?? 0}</div>
+            </div>
+
+            <div style={styles.statCard}>
+              <div style={styles.statLabel}>Game Accuracy</div>
+              <div style={styles.statValue}>{formatPct(summary.game_accuracy)}</div>
+            </div>
+
+            <div style={styles.statCard}>
+              <div style={styles.statLabel}>Last 5 Accuracy</div>
+              <div style={styles.statValue}>{formatPct(summary.last_5_accuracy)}</div>
+            </div>
+
+            <div style={styles.statCard}>
+              <div style={styles.statLabel}>Last 10 Accuracy</div>
+              <div style={styles.statValue}>{formatPct(summary.last_10_accuracy)}</div>
+            </div>
+          </div>
+
           <div style={styles.grid2}>
-            <div>
-              <label style={styles.label}>Offense Team</label>
-              <input
-                type="text"
-                placeholder="ex. KC"
-                value={offense}
-                onChange={(e) => setOffense(e.target.value)}
-                style={styles.input}
-              />
-            </div>
+            <div style={styles.card}>
+              <h2 style={styles.sectionTitle}>Game Situation</h2>
 
-            <div>
-              <label style={styles.label}>Defense Team</label>
-              <input
-                type="text"
-                placeholder="ex. BUF"
-                value={defense}
-                onChange={(e) => setDefense(e.target.value)}
-                style={styles.input}
-              />
-            </div>
-          </div>
-
-          <div style={styles.buttonRow}>
-            <button onClick={handleSetTeams} style={styles.buttonPrimary}>
-              Launch Dashboard
-            </button>
-            {user && (
-              <button
-                onClick={() => setScreen("history")}
-                style={styles.buttonSecondary}
-              >
-                View Saved Games
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (screen === "history") {
-    return (
-      <div style={styles.page}>
-        <div style={styles.container}>
-          <div style={styles.topBar}>
-            <div>
-              <h1 style={styles.heroTitle}>Saved Game History</h1>
-              <div style={styles.heroSubtitle}>
-                Resume prior game states or remove old saves from your account.
-              </div>
-            </div>
-            <div style={styles.topBarRight}>
-              <button
-                onClick={() => setScreen(teamsSet ? "dashboard" : "teamSetup")}
-                style={styles.buttonSecondary}
-              >
-                Back
-              </button>
-              <button onClick={handleLogout} style={styles.buttonSecondary}>
-                Logout
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            {userGames.length === 0 ? (
-              <p style={styles.empty}>No saved games yet.</p>
-            ) : (
-              userGames.map((game) => (
-                <div key={game.id} style={styles.gameCard}>
-                  <h3 style={{ margin: 0, color: "#f8fafc" }}>{game.title}</h3>
-                  <div style={styles.gameMeta}>
-                    Saved:{" "}
-                    {new Date(
-                      game.updated_at || game.updatedAt || game.created_at || Date.now()
-                    ).toLocaleString()}
-                    <br />
-                    Quarter: {game.game_state?.form?.qtr ?? "N/A"} | Down:{" "}
-                    {game.game_state?.form?.down ?? "N/A"} | Distance:{" "}
-                    {game.game_state?.form?.ydstogo ?? "N/A"}
-                    <br />
-                    Logged Plays: {game.game_state?.play_log?.length ?? 0}
-                  </div>
-                  <div style={styles.buttonRow}>
-                    <button
-                      onClick={() => handleResumeGame(game)}
-                      style={styles.buttonPrimary}
-                    >
-                      Resume Game
-                    </button>
-                    <button
-                      onClick={() => handleDeleteGame(game.id)}
-                      style={styles.buttonSecondary}
-                    >
-                      Delete Save
-                    </button>
-                  </div>
+              <div style={styles.grid3}>
+                <div>
+                  <label style={styles.label}>Down</label>
+                  <input
+                    type="number"
+                    value={form.down}
+                    onChange={(e) =>
+                      setForm({ ...form, down: Number(e.target.value) })
+                    }
+                    style={styles.input}
+                  />
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.topBar}>
-          <div style={styles.topBarRight}>
-            <span style={styles.statusPill}>
-              {user ? `Account: ${user.name}` : "Guest Session"}
-            </span>
-          </div>
-          <div style={styles.topBarRight}>
-            <button
-              onClick={() => {
-                resetGameState();
-                setScreen("teamSetup");
-              }}
-              style={styles.buttonSecondary}
-            >
-              Home
-            </button>
-            {user && (
-              <button onClick={() => setScreen("history")} style={styles.buttonSecondary}>
-                History
-              </button>
-            )}
-            {user ? (
-              <button onClick={handleLogout} style={styles.buttonSecondary}>
-                Logout
-              </button>
-            ) : (
-              <button
-                onClick={() => setScreen("authChoice")}
-                style={styles.buttonSecondary}
-              >
-                Login / Sign Up
-              </button>
-            )}
-          </div>
-        </div>
+                <div>
+                  <label style={styles.label}>Yards to Go</label>
+                  <input
+                    type="number"
+                    value={form.ydstogo}
+                    onChange={(e) =>
+                      setForm({ ...form, ydstogo: Number(e.target.value) })
+                    }
+                    style={styles.input}
+                  />
+                </div>
 
-        <div style={styles.hero}>
-          <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
-          <div style={styles.heroSubtitle}>
-            Live play prediction, defensive recommendation, and in-game tracking
-          </div>
-        </div>
+                <div>
+                  <label style={styles.label}>Yardline (0-100)</label>
+                  <input
+                    type="number"
+                    value={form.yardline_100}
+                    onChange={(e) =>
+                      setForm({ ...form, yardline_100: Number(e.target.value) })
+                    }
+                    style={styles.input}
+                  />
+                </div>
 
-        <div style={styles.statGrid}>
-          <div style={styles.statCard}>
-            <div style={styles.statLabel}>Total Predictions</div>
-            <div style={styles.statValue}>{summary.total_predictions ?? 0}</div>
-          </div>
+                <div>
+                  <label style={styles.label}>Game Seconds Remaining</label>
+                  <input
+                    type="number"
+                    value={form.game_seconds_remaining}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        game_seconds_remaining: Number(e.target.value),
+                      })
+                    }
+                    style={styles.input}
+                  />
+                </div>
 
-          <div style={styles.statCard}>
-            <div style={styles.statLabel}>Game Accuracy</div>
-            <div style={styles.statValue}>{formatPct(summary.game_accuracy)}</div>
-          </div>
+                <div>
+                  <label style={styles.label}>Quarter</label>
+                  <input
+                    type="number"
+                    value={form.qtr}
+                    onChange={(e) =>
+                      setForm({ ...form, qtr: Number(e.target.value) })
+                    }
+                    style={styles.input}
+                  />
+                </div>
 
-          <div style={styles.statCard}>
-            <div style={styles.statLabel}>Last 5 Accuracy</div>
-            <div style={styles.statValue}>{formatPct(summary.last_5_accuracy)}</div>
-          </div>
-
-          <div style={styles.statCard}>
-            <div style={styles.statLabel}>Last 10 Accuracy</div>
-            <div style={styles.statValue}>{formatPct(summary.last_10_accuracy)}</div>
-          </div>
-        </div>
-
-        <div style={styles.grid2}>
-          <div style={styles.card}>
-            <h2 style={styles.sectionTitle}>Game Situation</h2>
-
-            <div style={styles.grid3}>
-              <div>
-                <label style={styles.label}>Down</label>
-                <input
-                  type="number"
-                  value={form.down}
-                  onChange={(e) =>
-                    setForm({ ...form, down: Number(e.target.value) })
-                  }
-                  style={styles.input}
-                />
+                <div>
+                  <label style={styles.label}>Score Differential</label>
+                  <input
+                    type="number"
+                    value={form.score_differential}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        score_differential: Number(e.target.value),
+                      })
+                    }
+                    style={styles.input}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label style={styles.label}>Yards to Go</label>
-                <input
-                  type="number"
-                  value={form.ydstogo}
-                  onChange={(e) =>
-                    setForm({ ...form, ydstogo: Number(e.target.value) })
-                  }
-                  style={styles.input}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Yardline (0-100)</label>
-                <input
-                  type="number"
-                  value={form.yardline_100}
-                  onChange={(e) =>
-                    setForm({ ...form, yardline_100: Number(e.target.value) })
-                  }
-                  style={styles.input}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Game Seconds Remaining</label>
-                <input
-                  type="number"
-                  value={form.game_seconds_remaining}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      game_seconds_remaining: Number(e.target.value),
-                    })
-                  }
-                  style={styles.input}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Quarter</label>
-                <input
-                  type="number"
-                  value={form.qtr}
-                  onChange={(e) =>
-                    setForm({ ...form, qtr: Number(e.target.value) })
-                  }
-                  style={styles.input}
-                />
-              </div>
-
-              <div>
-                <label style={styles.label}>Score Differential</label>
-                <input
-                  type="number"
-                  value={form.score_differential}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      score_differential: Number(e.target.value),
-                    })
-                  }
-                  style={styles.input}
-                />
+              <div style={styles.buttonRow}>
+                <button onClick={handlePredict} style={styles.buttonPrimary}>
+                  Predict Next Play
+                </button>
+                <button onClick={handleNewDrive} style={styles.buttonSecondary}>
+                  Start New Drive
+                </button>
+                <button onClick={handleSaveGame} style={styles.buttonSecondary}>
+                  Save Game
+                </button>
               </div>
             </div>
 
-            <div style={styles.buttonRow}>
-              <button onClick={handlePredict} style={styles.buttonPrimary}>
-                Predict Next Play
-              </button>
-              <button onClick={handleNewDrive} style={styles.buttonSecondary}>
-                Start New Drive
-              </button>
-              <button onClick={handleSaveGame} style={styles.buttonSecondary}>
-                Save Game
-              </button>
+            <div style={styles.card}>
+              <h2 style={styles.sectionTitle}>Log Actual Play</h2>
+
+              <div style={styles.grid2}>
+                <div>
+                  <label style={styles.label}>Actual Play Type</label>
+                  <select
+                    value={actualPlayType}
+                    onChange={(e) => setActualPlayType(e.target.value)}
+                    style={styles.input}
+                  >
+                    <option value="RUN">RUN</option>
+                    <option value="PASS">PASS</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={styles.label}>Yards Gained</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={yardsGained}
+                    onChange={(e) => setYardsGained(e.target.value)}
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+
+              <div style={styles.buttonRow}>
+                <button onClick={handleLogPlay} style={styles.buttonPrimary}>
+                  Save Play Result
+                </button>
+              </div>
+
+              {pending && Object.keys(pending).length > 0 ? (
+                <div style={styles.reasonBox}>
+                  A prediction is currently pending and ready to be logged.
+                </div>
+              ) : (
+                <div style={styles.reasonBox}>
+                  No pending play yet. Run a prediction first.
+                </div>
+              )}
             </div>
           </div>
 
-          <div style={styles.card}>
-            <h2 style={styles.sectionTitle}>Log Actual Play</h2>
-
-            <div style={styles.grid2}>
-              <div>
-                <label style={styles.label}>Actual Play Type</label>
-                <select
-                  value={actualPlayType}
-                  onChange={(e) => setActualPlayType(e.target.value)}
-                  style={styles.input}
-                >
-                  <option value="RUN">RUN</option>
-                  <option value="PASS">PASS</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={styles.label}>Yards Gained</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={yardsGained}
-                  onChange={(e) => setYardsGained(e.target.value)}
-                  style={styles.input}
-                />
-              </div>
-            </div>
-
-            <div style={styles.buttonRow}>
-              <button onClick={handleLogPlay} style={styles.buttonPrimary}>
-                Save Play Result
-              </button>
-            </div>
-
-            {pending && Object.keys(pending).length > 0 ? (
-              <div style={styles.reasonBox}>
-                A prediction is currently pending and ready to be logged.
-              </div>
-            ) : (
-              <div style={styles.reasonBox}>
-                No pending play yet. Run a prediction first.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {prediction && (
-          <div style={{ ...styles.card, marginBottom: "20px" }}>
-            <h2
-              style={{
-                ...styles.sectionTitle,
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                alignItems: isMobile ? "flex-start" : "center",
-              }}
-            >
-              Prediction Result
-              <span
+          {prediction && (
+            <div style={{ ...styles.card, marginBottom: "20px" }}>
+              <h2
                 style={{
-                  ...styles.badge,
-                  background: `${getConfidenceColor(prediction.confidence_tier)}22`,
-                  color: getConfidenceColor(prediction.confidence_tier),
-                  border: `1px solid ${getConfidenceColor(prediction.confidence_tier)}55`,
+                  ...styles.sectionTitle,
+                  display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
+                  alignItems: isMobile ? "flex-start" : "center",
                 }}
               >
-                {prediction.confidence_tier}
-              </span>
-            </h2>
-
-            <div style={styles.predictionBig}>{prediction.prediction}</div>
-            <div style={styles.predictionMeta}>
-              Confidence: {(prediction.confidence * 100).toFixed(1)}%
-            </div>
-
-            <div style={styles.metricRow}>
-              <div style={styles.metricBox}>
-                <div style={styles.metricLabel}>Run Probability</div>
-                <div style={styles.metricValue}>
-                  {(prediction.run_probability * 100).toFixed(1)}%
-                </div>
-              </div>
-
-              <div style={styles.metricBox}>
-                <div style={styles.metricLabel}>Pass Probability</div>
-                <div style={styles.metricValue}>
-                  {(prediction.pass_probability * 100).toFixed(1)}%
-                </div>
-              </div>
-            </div>
-
-            {prediction.defensive_strategy && (
-              <>
-                <h3
+                Prediction Result
+                <span
                   style={{
-                    color: "#f8fafc",
-                    fontSize: isMobile ? "16px" : "18px",
-                    marginBottom: "14px",
-                    wordBreak: "break-word",
+                    ...styles.badge,
+                    background: `${getConfidenceColor(prediction.confidence_tier)}22`,
+                    color: getConfidenceColor(prediction.confidence_tier),
+                    border: `1px solid ${getConfidenceColor(prediction.confidence_tier)}55`,
                   }}
                 >
-                  Recommended Defensive Strategy
-                </h3>
+                  {prediction.confidence_tier}
+                </span>
+              </h2>
 
-                <div style={styles.strategyGrid}>
-                  <div style={styles.strategyItem}>
-                    <div style={styles.strategyLabel}>Personnel</div>
-                    <div style={styles.strategyValue}>
-                      {prediction.defensive_strategy.defensive_personnel}
-                    </div>
-                  </div>
+              <div style={styles.predictionBig}>{prediction.prediction}</div>
+              <div style={styles.predictionMeta}>
+                Confidence: {(prediction.confidence * 100).toFixed(1)}%
+              </div>
 
-                  <div style={styles.strategyItem}>
-                    <div style={styles.strategyLabel}>Front</div>
-                    <div style={styles.strategyValue}>
-                      {prediction.defensive_strategy.front}
-                    </div>
-                  </div>
-
-                  <div style={styles.strategyItem}>
-                    <div style={styles.strategyLabel}>Coverage</div>
-                    <div style={styles.strategyValue}>
-                      {prediction.defensive_strategy.coverage_shell}
-                    </div>
-                  </div>
-
-                  <div style={styles.strategyItem}>
-                    <div style={styles.strategyLabel}>Pressure</div>
-                    <div style={styles.strategyValue}>
-                      {prediction.defensive_strategy.pressure}
-                    </div>
-                  </div>
-
-                  <div style={styles.strategyItem}>
-                    <div style={styles.strategyLabel}>Aggression</div>
-                    <div style={styles.strategyValue}>
-                      {prediction.defensive_strategy.aggression}
-                    </div>
-                  </div>
-
-                  <div style={styles.strategyItem}>
-                    <div style={styles.strategyLabel}>Primary Focus</div>
-                    <div style={styles.strategyValue}>
-                      {prediction.defensive_strategy.primary_focus}
-                    </div>
+              <div style={styles.metricRow}>
+                <div style={styles.metricBox}>
+                  <div style={styles.metricLabel}>Run Probability</div>
+                  <div style={styles.metricValue}>
+                    {(prediction.run_probability * 100).toFixed(1)}%
                   </div>
                 </div>
 
-                <div style={styles.reasonBox}>
-                  <strong>Reason:</strong> {prediction.defensive_strategy.reason}
+                <div style={styles.metricBox}>
+                  <div style={styles.metricLabel}>Pass Probability</div>
+                  <div style={styles.metricValue}>
+                    {(prediction.pass_probability * 100).toFixed(1)}%
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        )}
+              </div>
 
-        <div style={styles.card}>
-          <h2 style={styles.sectionTitle}>Play Log</h2>
+              {prediction.defensive_strategy && (
+                <>
+                  <h3
+                    style={{
+                      color: "#f8fafc",
+                      fontSize: isMobile ? "16px" : "18px",
+                      marginBottom: "14px",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    Recommended Defensive Strategy
+                  </h3>
 
-          {playLog.length === 0 ? (
-            <p style={styles.empty}>No plays logged yet.</p>
-          ) : (
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>#</th>
-                    <th style={styles.th}>Predicted</th>
-                    <th style={styles.th}>Actual</th>
-                    <th style={styles.th}>Correct</th>
-                    <th style={styles.th}>Confidence</th>
-                    <th style={styles.th}>Yards</th>
-                    <th style={styles.th}>Drive</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {playLog.map((play, index) => (
-                    <tr key={index}>
-                      <td style={styles.td}>{index + 1}</td>
-                      <td style={styles.td}>{play.predicted_play_type}</td>
-                      <td style={styles.td}>{play.actual_play_type}</td>
-                      <td style={styles.td}>
-                        {play.correct_prediction ? "Yes" : "No"}
-                      </td>
-                      <td style={styles.td}>{formatPct(play.confidence)}</td>
-                      <td style={styles.td}>{play.yards_gained}</td>
-                      <td style={styles.td}>{play.drive_number}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  <div style={styles.strategyGrid}>
+                    <div style={styles.strategyItem}>
+                      <div style={styles.strategyLabel}>Personnel</div>
+                      <div style={styles.strategyValue}>
+                        {prediction.defensive_strategy.defensive_personnel}
+                      </div>
+                    </div>
+
+                    <div style={styles.strategyItem}>
+                      <div style={styles.strategyLabel}>Front</div>
+                      <div style={styles.strategyValue}>
+                        {prediction.defensive_strategy.front}
+                      </div>
+                    </div>
+
+                    <div style={styles.strategyItem}>
+                      <div style={styles.strategyLabel}>Coverage</div>
+                      <div style={styles.strategyValue}>
+                        {prediction.defensive_strategy.coverage_shell}
+                      </div>
+                    </div>
+
+                    <div style={styles.strategyItem}>
+                      <div style={styles.strategyLabel}>Pressure</div>
+                      <div style={styles.strategyValue}>
+                        {prediction.defensive_strategy.pressure}
+                      </div>
+                    </div>
+
+                    <div style={styles.strategyItem}>
+                      <div style={styles.strategyLabel}>Aggression</div>
+                      <div style={styles.strategyValue}>
+                        {prediction.defensive_strategy.aggression}
+                      </div>
+                    </div>
+
+                    <div style={styles.strategyItem}>
+                      <div style={styles.strategyLabel}>Primary Focus</div>
+                      <div style={styles.strategyValue}>
+                        {prediction.defensive_strategy.primary_focus}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.reasonBox}>
+                    <strong>Reason:</strong> {prediction.defensive_strategy.reason}
+                  </div>
+                </>
+              )}
             </div>
           )}
-        </div>
-      </div>
 
-      {showSavePrompt && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <h2 style={styles.sectionTitle}>Save Game</h2>
-            <p style={{ ...styles.empty, lineHeight: "1.6" }}>
-              Create an account or log in to save your game and view history later.
-            </p>
-            <div style={styles.buttonRow}>
-              <button
-                onClick={() => {
-                  setAuthMode("login");
-                  setShowSavePrompt(false);
-                  setScreen("authChoice");
-                }}
-                style={styles.buttonPrimary}
-              >
-                Login
-              </button>
-              <button
-                onClick={() => {
-                  setAuthMode("signup");
-                  setShowSavePrompt(false);
-                  setScreen("authChoice");
-                }}
-                style={styles.buttonSecondary}
-              >
-                Sign Up
-              </button>
-              <button
-                onClick={() => setShowSavePrompt(false)}
-                style={styles.buttonSecondary}
-              >
-                Cancel
-              </button>
-            </div>
+          <div style={styles.card}>
+            <h2 style={styles.sectionTitle}>Play Log</h2>
+
+            {playLog.length === 0 ? (
+              <p style={styles.empty}>No plays logged yet.</p>
+            ) : (
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>#</th>
+                      <th style={styles.th}>Predicted</th>
+                      <th style={styles.th}>Actual</th>
+                      <th style={styles.th}>Correct</th>
+                      <th style={styles.th}>Confidence</th>
+                      <th style={styles.th}>Yards</th>
+                      <th style={styles.th}>Drive</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {playLog.map((play, index) => (
+                      <tr key={index}>
+                        <td style={styles.td}>{index + 1}</td>
+                        <td style={styles.td}>{play.predicted_play_type}</td>
+                        <td style={styles.td}>{play.actual_play_type}</td>
+                        <td style={styles.td}>
+                          {play.correct_prediction ? "Yes" : "No"}
+                        </td>
+                        <td style={styles.td}>{formatPct(play.confidence)}</td>
+                        <td style={styles.td}>{play.yards_gained}</td>
+                        <td style={styles.td}>{play.drive_number}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
-      )}
-    </div>
+
+        {showSavePrompt && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.modalCard}>
+              <h2 style={styles.sectionTitle}>Save Game</h2>
+              <p style={{ ...styles.empty, lineHeight: "1.6" }}>
+                Create an account or log in to save your game and view history later.
+              </p>
+              <div style={styles.buttonRow}>
+                <button
+                  onClick={() => {
+                    setAuthMode("login");
+                    setShowSavePrompt(false);
+                    setScreen("authChoice");
+                  }}
+                  style={styles.buttonPrimary}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setShowSavePrompt(false);
+                    setScreen("authChoice");
+                  }}
+                  style={styles.buttonSecondary}
+                >
+                  Sign Up
+                </button>
+                <button
+                  onClick={() => setShowSavePrompt(false)}
+                  style={styles.buttonSecondary}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
