@@ -4,7 +4,6 @@ import pandas as pd
 from pathlib import Path
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
-
 from xgboost import XGBClassifier
 
 import sys
@@ -13,16 +12,11 @@ BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR / "backend"))
 
 from model_wrappers import EncodedClassifier
-
 from feature_builder import build_situational_flags
 
 
 SEASONS = [2020, 2021, 2022, 2023]
-BASE_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = BASE_DIR / "backend"
-
-
-
 
 
 def make_xgb_classifier(num_classes=None):
@@ -349,23 +343,25 @@ def train_and_save_pass_concept_model(pbp):
     pass_df = pbp[pbp["play_type"] == "pass"].copy()
     pass_df["pass_concept"] = pass_df.apply(classify_pass_concept, axis=1)
     pass_df = pass_df.dropna(subset=["pass_concept"]).copy()
-        # 🔥 REMOVE RARE CLASSES (like qb_scramble)
+
     class_counts = pass_df["pass_concept"].value_counts()
-
-    valid_classes = class_counts[class_counts >= 20].index  # threshold = 20 (safe)
-
+    valid_classes = class_counts[class_counts >= 20].index
     pass_df = pass_df[pass_df["pass_concept"].isin(valid_classes)].copy()
 
-    print("Filtered pass concept classes:", pass_df["pass_concept"].value_counts())
+    print("Filtered pass concept classes:")
+    print(pass_df["pass_concept"].value_counts())
 
     if pass_df.empty:
-        raise ValueError("No valid pass_concept labels found.")
+        raise ValueError("No valid pass_concept labels found after filtering rare classes.")
 
     features = get_feature_columns(include_is_pass=False)
     X, y = prepare_encoded_xy(pass_df, features, "pass_concept")
 
     unique_classes = sorted(y.unique())
     print(f"Pass concept classes: {unique_classes}")
+
+    if len(unique_classes) < 2:
+        raise ValueError("Need at least two pass concept classes to train the model.")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
