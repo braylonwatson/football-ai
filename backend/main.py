@@ -1,3 +1,4 @@
+# main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,6 +19,25 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
+VALID_TEAMS = {
+    "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
+    "DAL", "DEN", "DET", "GB", "HOU", "IND", "JAX", "KC",
+    "LAC", "LAR", "LV", "MIA", "MIN", "NE", "NO", "NYG",
+    "NYJ", "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS",
+}
+
+
+def normalize_team(team: Optional[str]) -> str:
+    return (team or "").strip().upper()
+
+
+def validate_team_code(team: str, field_name: str) -> None:
+    if team not in VALID_TEAMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} must be a valid NFL team abbreviation.",
+        )
 
 
 def hash_password(password: str):
@@ -194,8 +214,8 @@ def load_game(data: LoadGameRequest):
 
         state = game.game_state
 
-        tracker.offense = state.get("offense")
-        tracker.defense = state.get("defense")
+        tracker.offense = normalize_team(state.get("offense"))
+        tracker.defense = normalize_team(state.get("defense"))
         tracker.play_log = state.get("play_log", [])
         tracker.current_drive_number = state.get("current_drive_number", 1)
 
@@ -227,7 +247,19 @@ def delete_game(game_id: int, user_id: int):
 
 @app.post("/set-teams")
 def set_teams(data: TeamRequest):
-    tracker.set_teams(data.offense, data.defense)
+    offense = normalize_team(data.offense)
+    defense = normalize_team(data.defense)
+
+    if not offense or not defense:
+      raise HTTPException(
+          status_code=400,
+          detail="Both offense and defense teams are required.",
+      )
+
+    validate_team_code(offense, "Offense")
+    validate_team_code(defense, "Defense")
+
+    tracker.set_teams(offense, defense)
     return {
         "message": "Teams set successfully",
         "offense": tracker.offense,
@@ -251,6 +283,18 @@ def get_state():
 
 @app.post("/predict")
 def predict(data: PredictRequest):
+    offense = normalize_team(getattr(tracker, "offense", ""))
+    defense = normalize_team(getattr(tracker, "defense", ""))
+
+    if not offense or not defense:
+        raise HTTPException(
+            status_code=400,
+            detail="Set both teams before requesting a prediction.",
+        )
+
+    validate_team_code(offense, "Offense")
+    validate_team_code(defense, "Defense")
+
     try:
         return tracker.predict_next_play(
             down=data.down,

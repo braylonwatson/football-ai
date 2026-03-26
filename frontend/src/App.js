@@ -1,7 +1,148 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+// App.js
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import BackgroundParticles from "./BackgroundParticles";
 
 const API = process.env.REACT_APP_API_URL;
+
+const TEAM_OPTIONS = [
+  { value: "ARI", label: "Arizona Cardinals" },
+  { value: "ATL", label: "Atlanta Falcons" },
+  { value: "BAL", label: "Baltimore Ravens" },
+  { value: "BUF", label: "Buffalo Bills" },
+  { value: "CAR", label: "Carolina Panthers" },
+  { value: "CHI", label: "Chicago Bears" },
+  { value: "CIN", label: "Cincinnati Bengals" },
+  { value: "CLE", label: "Cleveland Browns" },
+  { value: "DAL", label: "Dallas Cowboys" },
+  { value: "DEN", label: "Denver Broncos" },
+  { value: "DET", label: "Detroit Lions" },
+  { value: "GB", label: "Green Bay Packers" },
+  { value: "HOU", label: "Houston Texans" },
+  { value: "IND", label: "Indianapolis Colts" },
+  { value: "JAX", label: "Jacksonville Jaguars" },
+  { value: "KC", label: "Kansas City Chiefs" },
+  { value: "LAC", label: "Los Angeles Chargers" },
+  { value: "LAR", label: "Los Angeles Rams" },
+  { value: "LV", label: "Las Vegas Raiders" },
+  { value: "MIA", label: "Miami Dolphins" },
+  { value: "MIN", label: "Minnesota Vikings" },
+  { value: "NE", label: "New England Patriots" },
+  { value: "NO", label: "New Orleans Saints" },
+  { value: "NYG", label: "New York Giants" },
+  { value: "NYJ", label: "New York Jets" },
+  { value: "PHI", label: "Philadelphia Eagles" },
+  { value: "PIT", label: "Pittsburgh Steelers" },
+  { value: "SEA", label: "Seattle Seahawks" },
+  { value: "SF", label: "San Francisco 49ers" },
+  { value: "TB", label: "Tampa Bay Buccaneers" },
+  { value: "TEN", label: "Tennessee Titans" },
+  { value: "WAS", label: "Washington Commanders" },
+];
+
+const VALID_TEAM_CODES = new Set(TEAM_OPTIONS.map((team) => team.value));
+const TEAM_NAME_BY_CODE = TEAM_OPTIONS.reduce((acc, team) => {
+  acc[team.value] = team.label;
+  return acc;
+}, {});
+
+const PLAY_TYPE_OPTIONS = [
+  { value: "RUN", label: "RUN" },
+  { value: "PASS", label: "PASS" },
+];
+
+function CustomSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  buttonStyle,
+  menuStyle,
+  optionStyle,
+  isMobile,
+}) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(null);
+  const wrapperRef = useRef(null);
+
+  const selectedOption = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative", width: "100%" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        style={buttonStyle}
+      >
+        <span
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <span
+          style={{
+            marginLeft: "10px",
+            fontSize: isMobile ? "11px" : "10px",
+            color: "#2fc50e",
+            flexShrink: 0,
+          }}
+        >
+          ▼
+        </span>
+      </button>
+
+      {open && (
+        <div style={menuStyle}>
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            const isHovered = hovered === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                onMouseEnter={() => setHovered(option.value)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  ...optionStyle,
+                  background: isSelected
+                    ? "rgba(37, 235, 60, 0.18)"
+                    : isHovered
+                    ? "rgba(37, 235, 60, 0.10)"
+                    : "transparent",
+                  color: isSelected ? "#7CFF7C" : "#f8fafc",
+                  borderLeft: isSelected
+                    ? "3px solid #25eb2c"
+                    : "3px solid transparent",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function App() {
   const [screen, setScreen] = useState("authChoice");
@@ -9,6 +150,8 @@ function App() {
   const [teamsSet, setTeamsSet] = useState(false);
   const [offense, setOffense] = useState("");
   const [defense, setDefense] = useState("");
+  const [setupError, setSetupError] = useState("");
+  const [predictionError, setPredictionError] = useState("");
   const [user, setUser] = useState(() => {
     try {
       const raw = localStorage.getItem("coordinaite_current_user");
@@ -47,6 +190,11 @@ function App() {
 
   const [historyGames, setHistoryGames] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  const getTeamDisplay = useCallback((code) => {
+    if (!code) return "";
+    return TEAM_NAME_BY_CODE[code] ? `${TEAM_NAME_BY_CODE[code]} (${code})` : code;
+  }, []);
 
   const refreshData = useCallback(async () => {
     try {
@@ -117,6 +265,7 @@ function App() {
       score_differential: 0,
     });
     setPrediction(null);
+    setPredictionError("");
     setPending({});
     setPlayLog([]);
     setSummary({});
@@ -124,6 +273,7 @@ function App() {
     setYardsGained(0);
     setOffense("");
     setDefense("");
+    setSetupError("");
     setTeamsSet(false);
   };
 
@@ -235,6 +385,19 @@ function App() {
   };
 
   const handleSetTeams = async () => {
+    setSetupError("");
+    setPredictionError("");
+
+    if (!offense || !defense) {
+      setSetupError("Please select both teams before launching the dashboard.");
+      return;
+    }
+
+    if (!VALID_TEAM_CODES.has(offense) || !VALID_TEAM_CODES.has(defense)) {
+      setSetupError("Please select valid NFL teams from the dropdown menus.");
+      return;
+    }
+
     try {
       const res = await fetch(`${API}/set-teams`, {
         method: "POST",
@@ -244,16 +407,29 @@ function App() {
         body: JSON.stringify({ offense, defense }),
       });
 
-      if (res.ok) {
-        setTeamsSet(true);
-        setScreen("dashboard");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSetupError(data.detail || "Unable to set teams.");
+        return;
       }
+
+      setTeamsSet(true);
+      setScreen("dashboard");
     } catch (error) {
       console.error("Error setting teams:", error);
+      setSetupError("Could not connect to the server.");
     }
   };
 
   const handlePredict = async () => {
+    setPredictionError("");
+
+    if (!teamsSet || !offense || !defense) {
+      setPredictionError("Set both teams before making predictions.");
+      return;
+    }
+
     try {
       const res = await fetch(`${API}/predict`, {
         method: "POST",
@@ -264,10 +440,19 @@ function App() {
       });
 
       const data = await res.json();
+
+      if (!res.ok) {
+        setPrediction(null);
+        setPredictionError(data.detail || "Prediction failed.");
+        return;
+      }
+
       setPrediction(data);
       refreshData();
     } catch (error) {
       console.error("Error predicting play:", error);
+      setPrediction(null);
+      setPredictionError("Could not connect to the server.");
     }
   };
 
@@ -332,7 +517,7 @@ function App() {
         },
         body: JSON.stringify({
           user_id: user.user_id,
-          title: `${offense || "Offense"} vs ${defense || "Defense"}`,
+          title: `${getTeamDisplay(offense) || "Offense"} vs ${getTeamDisplay(defense) || "Defense"}`,
           game_state: buildGameSnapshot(),
         }),
       });
@@ -383,12 +568,14 @@ function App() {
         }
       );
       setPrediction(loaded.prediction || null);
+      setPredictionError("");
       setPending(loaded.pending || {});
       setPlayLog(loaded.play_log || []);
       setSummary(loaded.summary || {});
       setActualPlayType(loaded.actualPlayType || "RUN");
       setYardsGained(loaded.yardsGained ?? 0);
-      setTeamsSet(true);
+      setSetupError("");
+      setTeamsSet(Boolean(loaded.offense && loaded.defense));
       setScreen("dashboard");
       refreshData();
     } catch (error) {
@@ -427,7 +614,6 @@ function App() {
     page: {
       minHeight: "100vh",
       background: "transparent",
-        
       color: "#f5f5f5",
       fontFamily: "Arial, sans-serif",
       padding: isMobile ? "16px" : "28px",
@@ -552,6 +738,49 @@ function App() {
       outline: "none",
       boxSizing: "border-box",
       minWidth: 0,
+    },
+    customSelectButton: {
+      width: "100%",
+      padding: isMobile ? "10px 12px" : "9px 12px",
+      borderRadius: "12px",
+      border: "1px solid rgba(29, 29, 29, 0.25)",
+      background: "#121312",
+      color: "#f8fafc",
+      fontSize: isMobile ? "15px" : "14px",
+      outline: "none",
+      boxSizing: "border-box",
+      minWidth: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      textAlign: "left",
+      cursor: "pointer",
+      minHeight: isMobile ? "42px" : "38px",
+    },
+    customSelectMenu: {
+      position: "absolute",
+      top: "calc(100% + 6px)",
+      left: 0,
+      right: 0,
+      background: "#0d120d",
+      border: "1px solid rgba(47, 197, 14, 0.25)",
+      borderRadius: "12px",
+      overflow: "hidden",
+      boxShadow: "0 14px 30px rgba(0, 0, 0, 0.45)",
+      zIndex: 50,
+      maxHeight: "260px",
+      overflowY: "auto",
+    },
+    customSelectOption: {
+      width: "100%",
+      padding: isMobile ? "10px 12px" : "9px 12px",
+      background: "transparent",
+      color: "#f8fafc",
+      border: "none",
+      textAlign: "left",
+      cursor: "pointer",
+      fontSize: isMobile ? "15px" : "14px",
+      transition: "background 0.15s ease",
     },
     buttonPrimary: {
       padding: "12px 18px",
@@ -706,7 +935,6 @@ function App() {
     setupWrap: {
       minHeight: "100vh",
       background: "transparent",
-        
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -797,6 +1025,8 @@ function App() {
       lineHeight: "1.5",
     },
   };
+
+  const launchDisabled = !offense || !defense;
 
   if (screen === "authChoice") {
     return (
@@ -947,29 +1177,53 @@ function App() {
             <div style={styles.grid2}>
               <div>
                 <label style={styles.label}>Offense Team</label>
-                <input
-                  type="text"
-                  placeholder="ex. KC"
+                <CustomSelect
                   value={offense}
-                  onChange={(e) => setOffense(e.target.value)}
-                  style={styles.input}
+                  onChange={(selectedValue) => {
+                    setOffense(selectedValue);
+                    setSetupError("");
+                  }}
+                  options={TEAM_OPTIONS}
+                  placeholder="Select offense team"
+                  buttonStyle={styles.customSelectButton}
+                  menuStyle={styles.customSelectMenu}
+                  optionStyle={styles.customSelectOption}
+                  isMobile={isMobile}
                 />
               </div>
 
               <div>
                 <label style={styles.label}>Defense Team</label>
-                <input
-                  type="text"
-                  placeholder="ex. BUF"
+                <CustomSelect
                   value={defense}
-                  onChange={(e) => setDefense(e.target.value)}
-                  style={styles.input}
+                  onChange={(selectedValue) => {
+                    setDefense(selectedValue);
+                    setSetupError("");
+                  }}
+                  options={TEAM_OPTIONS}
+                  placeholder="Select defense team"
+                  buttonStyle={styles.customSelectButton}
+                  menuStyle={styles.customSelectMenu}
+                  optionStyle={styles.customSelectOption}
+                  isMobile={isMobile}
                 />
               </div>
             </div>
 
+            {setupError && (
+              <div style={{ ...styles.reasonBox, color: "#fca5a5" }}>{setupError}</div>
+            )}
+
             <div style={styles.buttonRow}>
-              <button onClick={handleSetTeams} style={styles.buttonPrimary}>
+              <button
+                onClick={handleSetTeams}
+                style={{
+                  ...styles.buttonPrimary,
+                  opacity: launchDisabled ? 0.65 : 1,
+                  cursor: launchDisabled ? "not-allowed" : "pointer",
+                }}
+                disabled={launchDisabled}
+              >
                 Launch Dashboard
               </button>
               {user && (
@@ -1101,6 +1355,12 @@ function App() {
             <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
             <div style={styles.heroSubtitle}>
               Live play prediction, defensive recommendation, and in-game tracking
+              {offense && defense && (
+                <>
+                  <br />
+                  {getTeamDisplay(offense)} offense vs {getTeamDisplay(defense)} defense
+                </>
+              )}
             </div>
           </div>
 
@@ -1210,6 +1470,10 @@ function App() {
                 </div>
               </div>
 
+              {predictionError && (
+                <div style={{ ...styles.reasonBox, color: "#fca5a5" }}>{predictionError}</div>
+              )}
+
               <div style={styles.buttonRow}>
                 <button onClick={handlePredict} style={styles.buttonPrimary}>
                   Predict Next Play
@@ -1229,14 +1493,16 @@ function App() {
               <div style={styles.grid2}>
                 <div>
                   <label style={styles.label}>Actual Play Type</label>
-                  <select
+                  <CustomSelect
                     value={actualPlayType}
-                    onChange={(e) => setActualPlayType(e.target.value)}
-                    style={styles.input}
-                  >
-                    <option value="RUN">RUN</option>
-                    <option value="PASS">PASS</option>
-                  </select>
+                    onChange={(selectedValue) => setActualPlayType(selectedValue)}
+                    options={PLAY_TYPE_OPTIONS}
+                    placeholder="Select play type"
+                    buttonStyle={styles.customSelectButton}
+                    menuStyle={styles.customSelectMenu}
+                    optionStyle={styles.customSelectOption}
+                    isMobile={isMobile}
+                  />
                 </div>
 
                 <div>
