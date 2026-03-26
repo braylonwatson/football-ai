@@ -1024,6 +1024,102 @@ function App() {
       marginTop: "6px",
       lineHeight: "1.5",
     },
+    proPageWrap: {
+      minHeight: "100vh",
+      background: "transparent",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: isMobile ? "16px" : "28px",
+      fontFamily: "Arial, sans-serif",
+      position: "relative",
+      zIndex: 1,
+    },
+    proPageCard: {
+      width: "100%",
+      maxWidth: "920px",
+      background: "rgba(10, 14, 10, 0.9)",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      borderRadius: "24px",
+      padding: isMobile ? "22px" : "34px",
+      boxShadow: "0 20px 50px rgba(153, 227, 141, 0.2)",
+    },
+    proTopBar: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: isMobile ? "stretch" : "center",
+      flexDirection: isMobile ? "column" : "row",
+      gap: "12px",
+      marginBottom: "24px",
+    },
+    tierShowcaseWrap: {
+      display: "flex",
+      justifyContent: "center",
+      marginTop: "12px",
+    },
+    tierShowcaseCard: {
+      width: "100%",
+      maxWidth: "380px",
+      minHeight: isMobile ? "460px" : "560px",
+      borderRadius: "26px",
+      padding: isMobile ? "24px 20px" : "32px 26px",
+      background:
+        "linear-gradient(180deg, rgba(57, 103, 54, 0.97), rgba(5, 9, 5, 0.98))",
+      border: "1px solid rgba(255, 255, 255, 0.18)",
+      boxShadow: "0 18px 45px rgba(37, 235, 60, 0.18)",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+    },
+    tierLabel: {
+      fontSize: "12px",
+      color: "#c9f5cb",
+      textTransform: "uppercase",
+      letterSpacing: "0.18em",
+      fontWeight: "800",
+      marginBottom: "12px",
+    },
+    tierTitle: {
+      fontSize: isMobile ? "34px" : "42px",
+      fontWeight: "900",
+      color: "#f8fafc",
+      margin: 0,
+      lineHeight: "1.05",
+    },
+    tierSubtitle: {
+      marginTop: "12px",
+      color: "#d8e4d8",
+      fontSize: isMobile ? "14px" : "15px",
+      lineHeight: "1.55",
+    },
+    tierFeatureList: {
+      display: "grid",
+      gap: "14px",
+      marginTop: "26px",
+    },
+    tierFeatureItem: {
+      background: "rgba(0, 0, 0, 0.36)",
+      border: "1px solid rgba(255, 255, 255, 0.12)",
+      borderRadius: "16px",
+      padding: "14px 14px",
+    },
+    tierFeatureTitle: {
+      color: "#7CFF7C",
+      fontWeight: "800",
+      fontSize: "15px",
+      marginBottom: "6px",
+    },
+    tierFeatureText: {
+      color: "#dce7dc",
+      fontSize: "13px",
+      lineHeight: "1.5",
+    },
+    tierFooterText: {
+      marginTop: "24px",
+      color: "#cfd8cf",
+      fontSize: "13px",
+      lineHeight: "1.55",
+    },
   };
 
   const launchDisabled = !offense || !defense;
@@ -1034,12 +1130,24 @@ function App() {
         <BackgroundParticles />
         <div style={styles.setupWrap}>
           <div style={styles.setupCard}>
-            <h1 style={styles.setupTitle}>
-              Coordin<span style={{ color: "#41d00e" }}>AI</span>te
-            </h1>
-            <p style={styles.setupSubtitle}>
-              Your live AI play predictor!
-            </p>
+            <div style={styles.topBar}>
+              <div>
+                <h1 style={styles.setupTitle}>
+                  Coordin<span style={{ color: "#41d00e" }}>AI</span>te
+                </h1>
+                <p style={styles.setupSubtitle}>
+                  Your live AI play predictor!
+                </p>
+              </div>
+              <div style={styles.topBarRight}>
+                <button
+                  onClick={() => setScreen("upgrade")}
+                  style={styles.buttonSecondary}
+                >
+                  Upgrade
+                </button>
+              </div>
+            </div>
 
             <div style={styles.authTabs}>
               <button
@@ -1151,6 +1259,12 @@ function App() {
                 <span style={styles.statusPill}>
                   {user ? `Logged in as ${user.name}` : "Guest Mode"}
                 </span>
+                <button
+                  onClick={() => setScreen("upgrade")}
+                  style={styles.buttonSecondary}
+                >
+                  Upgrade
+                </button>
                 {user ? (
                   <>
                     <button
@@ -1234,6 +1348,79 @@ function App() {
                   View Saved Games
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (screen === "upgrade") {
+    return (
+      <>
+        <BackgroundParticles />
+        <div style={styles.proPageWrap}>
+          <div style={styles.proPageCard}>
+            <div style={styles.proTopBar}>
+              <div>
+                <h1 style={styles.setupTitle}>
+                  Coordin<span style={{ color: "#41d00e" }}>AI</span>te Pro
+                </h1>
+                <p style={{ ...styles.setupSubtitle, marginBottom: 0, color: "#aaaaaa" }}>
+                  Unlock the next layer of game intelligence with Tier 2.
+                </p>
+              </div>
+              <div style={styles.topBarRight}>
+                <button
+                  onClick={() => setScreen(user || isGuest ? (teamsSet ? "dashboard" : "teamSetup") : "authChoice")}
+                  style={styles.buttonSecondary}
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.tierShowcaseWrap}>
+              <div style={styles.tierShowcaseCard}>
+                <div>
+                  <div style={styles.tierLabel}>Premium Plan</div>
+                  <h2 style={styles.tierTitle}>Tier 2</h2>
+                  <div style={styles.tierSubtitle}>
+                    Built for users who want more than just run and pass prediction.
+                  </div>
+
+                  <div style={styles.tierFeatureList}>
+                    <div style={styles.tierFeatureItem}>
+                      <div style={styles.tierFeatureTitle}>Play Direction Prediction</div>
+                      <div style={styles.tierFeatureText}>
+                        See whether the offense is leaning left, middle, or right
+                        before the snap.
+                      </div>
+                    </div>
+
+                    <div style={styles.tierFeatureItem}>
+                      <div style={styles.tierFeatureTitle}>Play Concept Prediction</div>
+                      <div style={styles.tierFeatureText}>
+                        Unlock concept-level insight such as screens, quick game,
+                        deep shots, inside runs, and edge-based runs.
+                      </div>
+                    </div>
+
+                    <div style={styles.tierFeatureItem}>
+                      <div style={styles.tierFeatureTitle}>Expanded Defensive Insight</div>
+                      <div style={styles.tierFeatureText}>
+                        Make more informed calls by pairing base play-type prediction
+                        with direction and concept tendencies.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={styles.tierFooterText}>
+                  CoordinAIte Pro Tier 2 is designed to give you a more detailed
+                  pre-snap picture without changing the look and feel of your current workflow.
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1342,6 +1529,12 @@ function App() {
                 style={styles.buttonSecondary}
               >
                 Home
+              </button>
+              <button
+                onClick={() => setScreen("upgrade")}
+                style={styles.buttonSecondary}
+              >
+                Upgrade
               </button>
               {user && (
                 <button onClick={() => setScreen("history")} style={styles.buttonSecondary}>
