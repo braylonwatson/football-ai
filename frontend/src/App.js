@@ -191,6 +191,9 @@ function App() {
   const [historyGames, setHistoryGames] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
+  const [dashboardTier, setDashboardTier] = useState(1);
+  const [tier2Ready, setTier2Ready] = useState(false);
+
   const getTeamDisplay = useCallback((code) => {
     if (!code) return "";
     return TEAM_NAME_BY_CODE[code] ? `${TEAM_NAME_BY_CODE[code]} (${code})` : code;
@@ -237,6 +240,21 @@ function App() {
 
   useEffect(() => {
     refreshData();
+
+    const fetchTier2Status = async () => {
+      try {
+        const res = await fetch(`${API}/tier2-status`);
+        const data = await res.json();
+        if (res.ok) {
+          setTier2Ready(Boolean(data.tier2_available));
+        }
+      } catch (error) {
+        console.error("Error fetching tier2 status:", error);
+        setTier2Ready(false);
+      }
+    };
+
+    fetchTier2Status();
 
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener("resize", handleResize);
@@ -380,6 +398,7 @@ function App() {
     setIsGuest(false);
     setHistoryGames([]);
     setShowSavePrompt(false);
+    setDashboardTier(1);
     resetGameState();
     setScreen("authChoice");
   };
@@ -415,7 +434,7 @@ function App() {
       }
 
       setTeamsSet(true);
-      setScreen("dashboard");
+      setScreen(dashboardTier === 2 ? "tier2Dashboard" : "dashboard");
     } catch (error) {
       console.error("Error setting teams:", error);
       setSetupError("Could not connect to the server.");
@@ -431,7 +450,9 @@ function App() {
     }
 
     try {
-      const res = await fetch(`${API}/predict`, {
+      const endpoint = screen === "tier2Dashboard" ? "/predict-tier2" : "/predict";
+
+      const res = await fetch(`${API}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -501,6 +522,7 @@ function App() {
     actualPlayType,
     yardsGained,
     teamsSet: true,
+    dashboardTier,
   });
 
   const handleSaveGame = async () => {
@@ -531,6 +553,7 @@ function App() {
 
       await fetchUserGames(user.user_id);
       resetGameState();
+      setDashboardTier(1);
       setScreen("teamSetup");
     } catch (error) {
       console.error("Error saving game:", error);
@@ -576,7 +599,11 @@ function App() {
       setYardsGained(loaded.yardsGained ?? 0);
       setSetupError("");
       setTeamsSet(Boolean(loaded.offense && loaded.defense));
-      setScreen("dashboard");
+
+      const savedTier = loaded.dashboardTier === 2 ? 2 : 1;
+      setDashboardTier(savedTier);
+      setScreen(savedTier === 2 ? "tier2Dashboard" : "dashboard");
+
       refreshData();
     } catch (error) {
       console.error("Error resuming game:", error);
@@ -1123,6 +1150,7 @@ function App() {
   };
 
   const launchDisabled = !offense || !defense;
+  const isTier2Screen = screen === "tier2Dashboard";
 
   if (screen === "authChoice") {
     return (
@@ -1372,7 +1400,17 @@ function App() {
               </div>
               <div style={styles.topBarRight}>
                 <button
-                  onClick={() => setScreen(user || isGuest ? (teamsSet ? "dashboard" : "teamSetup") : "authChoice")}
+                  onClick={() =>
+                    setScreen(
+                      user || isGuest
+                        ? teamsSet
+                          ? dashboardTier === 2
+                            ? "tier2Dashboard"
+                            : "dashboard"
+                          : "teamSetup"
+                        : "authChoice"
+                    )
+                  }
                   style={styles.buttonSecondary}
                 >
                   Back
@@ -1381,7 +1419,18 @@ function App() {
             </div>
 
             <div style={styles.tierShowcaseWrap}>
-              <div style={styles.tierShowcaseCard}>
+              <div
+                style={{
+                  ...styles.tierShowcaseCard,
+                  cursor: tier2Ready ? "pointer" : "not-allowed",
+                  opacity: tier2Ready ? 1 : 0.7,
+                }}
+                onClick={() => {
+                  if (!tier2Ready) return;
+                  setDashboardTier(2);
+                  setScreen(teamsSet ? "tier2Dashboard" : "teamSetup");
+                }}
+              >
                 <div>
                   <div style={styles.tierLabel}>Premium Plan</div>
                   <h2 style={styles.tierTitle}>Tier 2</h2>
@@ -1419,6 +1468,27 @@ function App() {
                 <div style={styles.tierFooterText}>
                   CoordinAIte Pro Tier 2 is designed to give you a more detailed
                   pre-snap picture without changing the look and feel of your current workflow.
+
+                  <div style={{ marginTop: "18px" }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!tier2Ready) return;
+                        setDashboardTier(2);
+                        setScreen(teamsSet ? "tier2Dashboard" : "teamSetup");
+                      }}
+                      style={{
+                        ...styles.buttonPrimary,
+                        width: "100%",
+                        opacity: tier2Ready ? 1 : 0.7,
+                        cursor: tier2Ready ? "pointer" : "not-allowed",
+                      }}
+                      disabled={!tier2Ready}
+                    >
+                      {tier2Ready ? "Enter Tier 2 Dashboard" : "Tier 2 Models Not Loaded Yet"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1455,7 +1525,15 @@ function App() {
               </div>
               <div style={styles.topBarRight}>
                 <button
-                  onClick={() => setScreen(teamsSet ? "dashboard" : "teamSetup")}
+                  onClick={() =>
+                    setScreen(
+                      teamsSet
+                        ? dashboardTier === 2
+                          ? "tier2Dashboard"
+                          : "dashboard"
+                        : "teamSetup"
+                    )
+                  }
                   style={styles.buttonSecondary}
                 >
                   Back
@@ -1524,6 +1602,7 @@ function App() {
               <button
                 onClick={() => {
                   resetGameState();
+                  setDashboardTier(1);
                   setScreen("teamSetup");
                 }}
                 style={styles.buttonSecondary}
@@ -1557,9 +1636,13 @@ function App() {
           </div>
 
           <div style={styles.hero}>
-            <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
+            <h1 style={styles.heroTitle}>
+              Football AI Defensive Assistant {isTier2Screen ? "— Tier 2" : ""}
+            </h1>
             <div style={styles.heroSubtitle}>
               Live play prediction, defensive recommendation, and in-game tracking
+              <br />
+              {isTier2Screen ? "Tier 2 Dashboard" : "Tier 1 Dashboard"}
               {offense && defense && (
                 <>
                   <br />
@@ -1783,6 +1866,36 @@ function App() {
                   </div>
                 </div>
               </div>
+
+              {isTier2Screen && (
+                <div style={styles.metricRow}>
+                  <div style={styles.metricBox}>
+                    <div style={styles.metricLabel}>Predicted Direction</div>
+                    <div style={styles.metricValue}>
+                      {prediction.play_direction_prediction || "N/A"}
+                    </div>
+                    <div style={styles.predictionMeta}>
+                      Confidence:{" "}
+                      {prediction.play_direction_confidence != null
+                        ? `${(prediction.play_direction_confidence * 100).toFixed(1)}%`
+                        : "N/A"}
+                    </div>
+                  </div>
+
+                  <div style={styles.metricBox}>
+                    <div style={styles.metricLabel}>Predicted Concept</div>
+                    <div style={styles.metricValue}>
+                      {prediction.play_concept_prediction || "N/A"}
+                    </div>
+                    <div style={styles.predictionMeta}>
+                      Confidence:{" "}
+                      {prediction.play_concept_confidence != null
+                        ? `${(prediction.play_concept_confidence * 100).toFixed(1)}%`
+                        : "N/A"}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {prediction.defensive_strategy && (
                 <>

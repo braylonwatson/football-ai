@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -128,6 +127,11 @@ def root():
     return {"message": "Football AI backend is running"}
 
 
+@app.get("/tier2-status")
+def tier2_status():
+    return {"tier2_available": tracker.tier2_available()}
+
+
 @app.post("/signup")
 def signup(data: SignupRequest):
     db = SessionLocal()
@@ -251,10 +255,10 @@ def set_teams(data: TeamRequest):
     defense = normalize_team(data.defense)
 
     if not offense or not defense:
-      raise HTTPException(
-          status_code=400,
-          detail="Both offense and defense teams are required.",
-      )
+        raise HTTPException(
+            status_code=400,
+            detail="Both offense and defense teams are required.",
+        )
 
     validate_team_code(offense, "Offense")
     validate_team_code(defense, "Defense")
@@ -278,6 +282,7 @@ def get_state():
         "current_drive_number": tracker.current_drive_number,
         "drive_total_plays": tracker.drive_total_plays,
         "drive_total_passes": tracker.drive_total_passes,
+        "tier2_available": tracker.tier2_available(),
     }
 
 
@@ -297,6 +302,33 @@ def predict(data: PredictRequest):
 
     try:
         return tracker.predict_next_play(
+            down=data.down,
+            ydstogo=data.ydstogo,
+            yardline_100=data.yardline_100,
+            game_seconds_remaining=data.game_seconds_remaining,
+            qtr=data.qtr,
+            score_differential=data.score_differential,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/predict-tier2")
+def predict_tier2(data: PredictRequest):
+    offense = normalize_team(getattr(tracker, "offense", ""))
+    defense = normalize_team(getattr(tracker, "defense", ""))
+
+    if not offense or not defense:
+        raise HTTPException(
+            status_code=400,
+            detail="Set both teams before requesting a prediction.",
+        )
+
+    validate_team_code(offense, "Offense")
+    validate_team_code(defense, "Defense")
+
+    try:
+        return tracker.predict_next_play_tier2(
             down=data.down,
             ydstogo=data.ydstogo,
             yardline_100=data.yardline_100,

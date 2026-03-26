@@ -1,14 +1,32 @@
 import joblib
 import pandas as pd
+from pathlib import Path
 
 from feature_builder import build_feature_row, safe_rate
 from recommendation_engine import get_confidence_tier
 
 
-def load_model_and_columns():
-    model = joblib.load("play_predictor_model.pkl")
-    model_columns = joblib.load("model_columns.pkl")
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _load_pickle(filename: str):
+    return joblib.load(BASE_DIR / filename)
+
+
+def load_model_bundle(model_filename: str, columns_filename: str):
+    model = _load_pickle(model_filename)
+    model_columns = _load_pickle(columns_filename)
     return model, model_columns
+
+
+def load_optional_model_bundle(model_filename: str, columns_filename: str):
+    model_path = BASE_DIR / model_filename
+    cols_path = BASE_DIR / columns_filename
+
+    if not model_path.exists() or not cols_path.exists():
+        return None, None
+
+    return _load_pickle(model_filename), _load_pickle(columns_filename)
 
 
 def get_defensive_strategy(
@@ -22,14 +40,12 @@ def get_defensive_strategy(
     confidence_tier: str,
     situational_snapshot: dict | None = None,
 ):
-    confidence = max(run_prob, pass_prob)
-
     short_yardage = ydstogo <= 2
     medium_yardage = 3 <= ydstogo <= 6
     long_yardage = (
-        (down == 1 and ydstogo >= 11) or
-        (down == 2 and ydstogo >= 8) or
-        (down in [3, 4] and ydstogo >= 7)
+        (down == 1 and ydstogo >= 11)
+        or (down == 2 and ydstogo >= 8)
+        or (down in [3, 4] and ydstogo >= 7)
     )
     red_zone = yardline_100 <= 20
     backed_up = yardline_100 >= 90
@@ -50,7 +66,6 @@ def get_defensive_strategy(
     if pass_rate_signals:
         live_pass_rate = sum(pass_rate_signals) / len(pass_rate_signals)
 
-    # Blend model output with live situational tendency
     if live_pass_rate is not None:
         blended_pass_prob = (0.7 * pass_prob) + (0.3 * live_pass_rate)
     else:
@@ -281,14 +296,7 @@ def get_defensive_strategy(
     }
 
 
-
 def classify_defensive_success(yards_gained: float, down: int, ydstogo: int) -> tuple[bool, str]:
-    """
-    Defensive success = offense fails standard success-rate thresholds.
-    1st down: offense needs >= 40% of yards to go
-    2nd down: offense needs >= 60% of yards to go
-    3rd/4th down: offense needs full conversion
-    """
     if down == 1:
         threshold = 0.4 * ydstogo
         rule = "1st down: offense needs at least 40% of yards-to-go"
@@ -311,7 +319,24 @@ def classify_explosive_play(actual_play_type: str, yards_gained: float) -> bool:
 
 class GameTracker:
     def __init__(self):
-        self.model, self.model_columns = load_model_and_columns()
+        self.model, self.model_columns = load_model_bundle(
+            "play_predictor_model.pkl",
+            "model_columns.pkl",
+        )
+
+        self.direction_model, self.direction_model_columns = load_optional_model_bundle(
+            "direction_predictor_model.pkl",
+            "direction_model_columns.pkl",
+        )
+        self.run_concept_model, self.run_concept_model_columns = load_optional_model_bundle(
+            "run_concept_predictor_model.pkl",
+            "run_concept_model_columns.pkl",
+        )
+        self.pass_concept_model, self.pass_concept_model_columns = load_optional_model_bundle(
+            "pass_concept_predictor_model.pkl",
+            "pass_concept_model_columns.pkl",
+        )
+
         self.offense = None
         self.defense = None
 
@@ -337,6 +362,18 @@ class GameTracker:
         self.play_log = []
         self.pending_play_context = None
 
+    def tier2_available(self) -> bool:
+        return all(
+            [
+                self.direction_model is not None,
+                self.direction_model_columns is not None,
+                self.run_concept_model is not None,
+                self.run_concept_model_columns is not None,
+                self.pass_concept_model is not None,
+                self.pass_concept_model_columns is not None,
+            ]
+        )
+
     def set_teams(self, offense, defense):
         self.offense = offense.strip().upper()
         self.defense = defense.strip().upper()
@@ -356,16 +393,16 @@ class GameTracker:
 
     def _is_medium_yardage(self, down, ydstogo):
         return (
-            (down == 1 and 3 <= ydstogo <= 9) or
-            (down == 2 and 3 <= ydstogo <= 7) or
-            (down in [3, 4] and 3 <= ydstogo <= 6)
+            (down == 1 and 3 <= ydstogo <= 9)
+            or (down == 2 and 3 <= ydstogo <= 7)
+            or (down in [3, 4] and 3 <= ydstogo <= 6)
         )
 
     def _is_long_yardage(self, down, ydstogo):
         return (
-            (down == 1 and ydstogo >= 11) or
-            (down == 2 and ydstogo >= 8) or
-            (down in [3, 4] and ydstogo >= 7)
+            (down == 1 and ydstogo >= 11)
+            or (down == 2 and ydstogo >= 8)
+            or (down in [3, 4] and ydstogo >= 7)
         )
 
     def _is_red_zone(self, yardline_100):
@@ -421,16 +458,15 @@ class GameTracker:
         self.current_drive_number += 1
         self.drive_total_plays = 0
         self.drive_total_passes = 0
-        print(f"Started new drive: Drive {self.current_drive_number}")
 
-    def _build_model_input(
+    def _build_base_feature_df(
         self,
         down,
         ydstogo,
         yardline_100,
         game_seconds_remaining,
         qtr,
-        score_differential
+        score_differential,
     ):
         game_pass_rate = self._current_game_pass_rate()
         drive_pass_rate = self._current_drive_pass_rate()
@@ -450,31 +486,38 @@ class GameTracker:
         )
 
         df = pd.get_dummies(df, columns=["posteam", "defteam"], drop_first=True)
-        df = df.reindex(columns=self.model_columns, fill_value=0)
-
         return df, game_pass_rate, drive_pass_rate
 
-    def show_live_state(self):
-        print("\n=== Live Game State ===")
-        print(f"Offense: {self.offense}")
-        print(f"Defense: {self.defense}")
-        print(f"Previous play pass flag: {self.prev_play_pass}")
-        print(f"Game total plays: {self.game_total_plays}")
-        print(f"Game total passes: {self.game_total_passes}")
-        print(f"Game pass rate: {self._current_game_pass_rate():.3f}")
-        print(f"Current drive: {self.current_drive_number}")
-        print(f"Drive total plays: {self.drive_total_plays}")
-        print(f"Drive total passes: {self.drive_total_passes}")
-        print(f"Drive pass rate: {self._current_drive_pass_rate():.3f}")
+    def _prepare_features_for_columns(
+        self,
+        model_columns,
+        down,
+        ydstogo,
+        yardline_100,
+        game_seconds_remaining,
+        qtr,
+        score_differential,
+    ):
+        df, game_pass_rate, drive_pass_rate = self._build_base_feature_df(
+            down=down,
+            ydstogo=ydstogo,
+            yardline_100=yardline_100,
+            game_seconds_remaining=game_seconds_remaining,
+            qtr=qtr,
+            score_differential=score_differential,
+        )
+        df = df.reindex(columns=model_columns, fill_value=0)
+        return df, game_pass_rate, drive_pass_rate
 
-        print("\n=== Situational Tendencies (Current Game) ===")
-        for key, value in self.situation_stats.items():
-            rate = safe_rate(value["passes"], value["plays"])
-            print(
-                f"{key}: plays={value['plays']}, "
-                f"passes={value['passes']}, "
-                f"pass_rate={rate:.3f}"
-            )
+    def _predict_label_and_confidence(self, model, df):
+        pred = model.predict(df)[0]
+
+        confidence = None
+        if hasattr(model, "predict_proba"):
+            probs = model.predict_proba(df)[0]
+            confidence = float(max(probs))
+
+        return pred, confidence
 
     def predict_next_play(
         self,
@@ -483,18 +526,19 @@ class GameTracker:
         yardline_100,
         game_seconds_remaining,
         qtr,
-        score_differential
+        score_differential,
     ):
         if self.offense is None or self.defense is None:
             raise ValueError("Teams not set. Call set_teams() first.")
 
-        df, g_rate, d_rate = self._build_model_input(
+        df, g_rate, d_rate = self._prepare_features_for_columns(
+            self.model_columns,
             down=down,
             ydstogo=ydstogo,
             yardline_100=yardline_100,
             game_seconds_remaining=game_seconds_remaining,
             qtr=qtr,
-            score_differential=score_differential
+            score_differential=score_differential,
         )
 
         pred = self.model.predict(df)[0]
@@ -563,7 +607,91 @@ class GameTracker:
             "situational_snapshot": situational_snapshot,
             "situation_alert": situation_alert,
             "defensive_strategy": defensive_strategy,
+            "tier": 1,
         }
+
+    def predict_next_play_tier2(
+        self,
+        down,
+        ydstogo,
+        yardline_100,
+        game_seconds_remaining,
+        qtr,
+        score_differential,
+    ):
+        if not self.tier2_available():
+            raise ValueError(
+                "Tier 2 models are not available. Add direction_predictor_model.pkl, "
+                "direction_model_columns.pkl, run_concept_predictor_model.pkl, "
+                "run_concept_model_columns.pkl, pass_concept_predictor_model.pkl, "
+                "and pass_concept_model_columns.pkl."
+            )
+
+        base_result = self.predict_next_play(
+            down=down,
+            ydstogo=ydstogo,
+            yardline_100=yardline_100,
+            game_seconds_remaining=game_seconds_remaining,
+            qtr=qtr,
+            score_differential=score_differential,
+        )
+
+        direction_df, _, _ = self._prepare_features_for_columns(
+            self.direction_model_columns,
+            down=down,
+            ydstogo=ydstogo,
+            yardline_100=yardline_100,
+            game_seconds_remaining=game_seconds_remaining,
+            qtr=qtr,
+            score_differential=score_differential,
+        )
+
+        direction_pred, direction_conf = self._predict_label_and_confidence(
+            self.direction_model,
+            direction_df,
+        )
+
+        predicted_play_type = base_result["prediction"]
+
+        if predicted_play_type == "RUN":
+            concept_model = self.run_concept_model
+            concept_columns = self.run_concept_model_columns
+        else:
+            concept_model = self.pass_concept_model
+            concept_columns = self.pass_concept_model_columns
+
+        concept_df, _, _ = self._prepare_features_for_columns(
+            concept_columns,
+            down=down,
+            ydstogo=ydstogo,
+            yardline_100=yardline_100,
+            game_seconds_remaining=game_seconds_remaining,
+            qtr=qtr,
+            score_differential=score_differential,
+        )
+
+        concept_pred, concept_conf = self._predict_label_and_confidence(
+            concept_model,
+            concept_df,
+        )
+
+        tier2_result = {
+            **base_result,
+            "tier": 2,
+            "play_direction_prediction": str(direction_pred),
+            "play_direction_confidence": round(direction_conf, 3) if direction_conf is not None else None,
+            "play_concept_prediction": str(concept_pred),
+            "play_concept_confidence": round(concept_conf, 3) if concept_conf is not None else None,
+        }
+
+        if self.pending_play_context is not None:
+            self.pending_play_context["play_direction_prediction"] = str(direction_pred)
+            self.pending_play_context["play_direction_confidence"] = direction_conf
+            self.pending_play_context["play_concept_prediction"] = str(concept_pred)
+            self.pending_play_context["play_concept_confidence"] = concept_conf
+            self.pending_play_context["tier"] = 2
+
+        return tier2_result
 
     def log_pending_result(self, actual_play_type, yards_gained=None, epa=None):
         if self.pending_play_context is None:
@@ -584,7 +712,7 @@ class GameTracker:
         play["actual_play_type"] = actual
         play["yards_gained"] = yards_gained
         play["epa"] = epa
-        play["correct_prediction"] = (play["predicted_play_type"] == actual)
+        play["correct_prediction"] = play["predicted_play_type"] == actual
 
         defensive_success, success_rule = classify_defensive_success(
             yards_gained=yards_gained,
@@ -614,201 +742,3 @@ class GameTracker:
         )
 
         self.pending_play_context = None
-
-    def show_play_log(self):
-        if not self.play_log:
-            print("\nNo plays logged yet.")
-            return
-
-        print("\n=== Game Play Log ===")
-        for i, play in enumerate(self.play_log, start=1):
-            print(
-                f"{i}. Drive {play['drive_number']} | "
-                f"Q{play['qtr']} | Down {play['down']} & {play['ydstogo']} | "
-                f"Yardline_100={play['yardline_100']} | "
-                f"ScoreDiff={play['score_differential']} | "
-                f"Pred={play['predicted_play_type']} | "
-                f"Conf={play['confidence']:.3f} ({play['confidence_tier']}) | "
-                f"Actual={play['actual_play_type']} | "
-                f"Yards={play.get('yards_gained', 'N/A')} | "
-                f"DefSuccess={play.get('defensive_success', 'N/A')} | "
-                f"Correct={play['correct_prediction']}"
-            )
-
-    def show_pending_play(self):
-        if self.pending_play_context is None:
-            print("\nNo pending prediction waiting to be logged.")
-            return
-
-        play = self.pending_play_context
-        strategy = play["defensive_strategy"]
-
-        print("\n=== Pending Predicted Play ===")
-        print(
-            f"Drive {play['drive_number']} | "
-            f"Q{play['qtr']} | Down {play['down']} & {play['ydstogo']} | "
-            f"Yardline_100={play['yardline_100']} | "
-            f"ScoreDiff={play['score_differential']}"
-        )
-        print(
-            f"Prediction: {play['predicted_play_type']} | "
-            f"RunProb={play['run_probability']:.3f} | "
-            f"PassProb={play['pass_probability']:.3f} | "
-            f"Confidence={play['confidence']:.3f} ({play['confidence_tier']})"
-        )
-        print(
-            f"GameRate={play['pred_game_pass_rate_used']:.3f} | "
-            f"DriveRate={play['pred_drive_pass_rate_used']:.3f}"
-        )
-
-        if play["situational_snapshot"]:
-            print("\nSituational Tendencies Used For Context:")
-            for key, stats in play["situational_snapshot"].items():
-                print(
-                    f"- {key}: plays={stats['plays']}, "
-                    f"passes={stats['passes']}, "
-                    f"pass_rate={stats['pass_rate']:.3f}"
-                )
-
-        if play.get("situation_alert"):
-            print("\nSituation Alert:")
-            print(f"- {play['situation_alert']}")
-
-        print("\n=== Defensive Strategy Suggestion ===")
-        print(f"- Personnel: {strategy['defensive_personnel']}")
-        print(f"- Front: {strategy['front']}")
-        print(f"- Coverage Shell: {strategy['coverage_shell']}")
-        print(f"- Pressure: {strategy['pressure']}")
-        print(f"- Aggression: {strategy['aggression']}")
-        print(f"- Primary Focus: {strategy['primary_focus']}")
-        print(f"- Reason: {strategy['reason']}")
-        print(f"- Blended Pass Probability: {strategy['blended_pass_probability']:.3f}")
-        print(f"- Blended Run Probability: {strategy['blended_run_probability']:.3f}")
-
-        if strategy.get("situation_notes"):
-            print("- Situation Notes:")
-            for note in strategy["situation_notes"]:
-                print(f"  * {note}")
-
-    def show_performance_summary(self):
-        if not self.play_log:
-            print("\nNo logged plays yet.")
-            return
-
-        total = len(self.play_log)
-        correct = sum(1 for p in self.play_log if p["correct_prediction"])
-        last_5 = self.play_log[-5:]
-        last_10 = self.play_log[-10:]
-
-        def acc(plays):
-            if not plays:
-                return 0.0
-            return sum(1 for p in plays if p["correct_prediction"]) / len(plays)
-
-        def avg_conf(plays):
-            if not plays:
-                return 0.0
-            return sum(p["confidence"] for p in plays) / len(plays)
-
-        high_conf = [p for p in self.play_log if p["confidence"] >= 0.75]
-        pred_pass = [p for p in self.play_log if p["predicted_play_type"] == "PASS"]
-        pred_run = [p for p in self.play_log if p["predicted_play_type"] == "RUN"]
-        correct_plays = [p for p in self.play_log if p["correct_prediction"]]
-        incorrect_plays = [p for p in self.play_log if not p["correct_prediction"]]
-        third_fourth = [p for p in self.play_log if p["down"] in [3, 4]]
-        long_yardage = [p for p in self.play_log if self._is_long_yardage(p["down"], p["ydstogo"])]
-
-        print("\n=== Live Performance Summary ===")
-        print(f"Total predictions: {total}")
-        print(f"Correct predictions: {correct}")
-        print(f"Game accuracy: {correct / total:.3f}")
-        print(f"Last 5 accuracy: {acc(last_5):.3f}")
-        print(f"Last 10 accuracy: {acc(last_10):.3f}")
-        print(f"High-confidence (>=0.75) accuracy: {acc(high_conf):.3f}" if high_conf else "High-confidence (>=0.75) accuracy: N/A")
-        print(f"Predicted PASS accuracy: {acc(pred_pass):.3f}" if pred_pass else "Predicted PASS accuracy: N/A")
-        print(f"Predicted RUN accuracy: {acc(pred_run):.3f}" if pred_run else "Predicted RUN accuracy: N/A")
-        print(f"Avg confidence (correct): {avg_conf(correct_plays):.3f}" if correct_plays else "Avg confidence (correct): N/A")
-        print(f"Avg confidence (incorrect): {avg_conf(incorrect_plays):.3f}" if incorrect_plays else "Avg confidence (incorrect): N/A")
-        print(f"3rd/4th down accuracy: {acc(third_fourth):.3f}" if third_fourth else "3rd/4th down accuracy: N/A")
-        print(f"Long-yardage accuracy: {acc(long_yardage):.3f}" if long_yardage else "Long-yardage accuracy: N/A")
-
-
-if __name__ == "__main__":
-    tracker = GameTracker()
-
-    print("=== Football Play Prediction Game Tracker ===")
-    offense = input("Enter offense team abbreviation (e.g. KC): ")
-    defense = input("Enter defense team abbreviation (e.g. BUF): ")
-    tracker.set_teams(offense, defense)
-
-    while True:
-        print("\nOptions:")
-        print("1. Predict next play")
-        print("2. Log actual result for pending play")
-        print("3. Start new drive")
-        print("4. Show play log")
-        print("5. Show pending prediction")
-        print("6. Show live state")
-        print("7. Show performance summary")
-        print("8. Exit")
-
-        choice = input("Choose an option: ").strip()
-
-        if choice == "1":
-            try:
-                down = int(input("Down: "))
-                ydstogo = int(input("Yards to go: "))
-                yardline_100 = int(input("Yardline_100: "))
-                game_seconds_remaining = int(input("Game seconds remaining: "))
-                qtr = int(input("Quarter: "))
-                score_differential = int(input("Score differential (offense perspective): "))
-
-                result = tracker.predict_next_play(
-                    down=down,
-                    ydstogo=ydstogo,
-                    yardline_100=yardline_100,
-                    game_seconds_remaining=game_seconds_remaining,
-                    qtr=qtr,
-                    score_differential=score_differential
-                )
-
-                print("\nPrediction Result:")
-                print(result)
-                print("\nNow watch the play, then use option 2 to log the actual result.")
-
-            except ValueError as e:
-                print(f"Input error: {e}")
-
-        elif choice == "2":
-            try:
-                actual_play_type = input("Actual play type (run/pass): ")
-                yards_gained = float(input("Yards gained on play: ").strip())
-                epa_raw = input("EPA on play (optional, press Enter to skip): ").strip()
-                epa = float(epa_raw) if epa_raw else None
-                tracker.log_pending_result(actual_play_type, yards_gained=yards_gained, epa=epa)
-                print("Pending play result logged successfully.")
-
-            except ValueError as e:
-                print(f"Input error: {e}")
-
-        elif choice == "3":
-            tracker.start_new_drive()
-
-        elif choice == "4":
-            tracker.show_play_log()
-
-        elif choice == "5":
-            tracker.show_pending_play()
-
-        elif choice == "6":
-            tracker.show_live_state()
-
-        elif choice == "7":
-            tracker.show_performance_summary()
-
-        elif choice == "8":
-            print("Exiting game tracker.")
-            break
-
-        else:
-            print("Invalid option. Please choose 1, 2, 3, 4, 5, 6, 7, or 8.")
