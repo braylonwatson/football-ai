@@ -1249,8 +1249,20 @@ function App() {
           <div style={styles.container}>
             <div style={styles.topBar}>
               <div>
-                <h1 style={styles.heroTitle}>Saved Game History</h1>
-                <div style={styles.heroSubtitle}>
+                <h1
+                  style={{
+                    ...styles.heroTitle,
+                    color: "#f8fafc",
+                  }}
+                >
+                  Saved Game History
+                </h1>
+                <div
+                  style={{
+                    ...styles.heroSubtitle,
+                    color: "#b8c5b8",
+                  }}
+                >
                   Resume prior game states or remove old saves from your account.
                 </div>
               </div>
