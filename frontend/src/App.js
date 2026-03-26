@@ -1035,7 +1035,7 @@ function App() {
         <div style={styles.setupWrap}>
           <div style={styles.setupCard}>
             <h1 style={styles.setupTitle}>
-              Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
+              Coordin<span style={{ color: "#41d00e" }}>AI</span>te
             </h1>
             <p style={styles.setupSubtitle}>
               Your live AI play predictor!
@@ -1141,7 +1141,7 @@ function App() {
             <div style={styles.topBar}>
               <div>
                 <h1 style={styles.setupTitle}>
-                  Coordin<span style={{ color: "#0b0b0b" }}>AI</span>te
+                  Coordin<span style={{ color: "#41d00e" }}>AI</span>te
                 </h1>
                 <p style={styles.setupSubtitle}>
                   Set the offense and defense to begin the live prediction dashboard.
