@@ -1520,7 +1520,7 @@ function App() {
                 <div>
                   <div style={styles.tierLabel}>Premium Plan</div>
                   <h2 style={styles.tierTitle}>Tier 2</h2>
-                  <div style={{ color: "#22c55e", fontSize: "20px", fontWeight: "bold", marginBottom: "10px" }}>
+                  <div style={{ color: "#000000", fontSize: "20px", fontWeight: "bold", marginBottom: "10px" }}>
                     $20 / month
                   </div>
                   <div style={styles.tierSubtitle}>
