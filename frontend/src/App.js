@@ -1767,7 +1767,7 @@ function App() {
           <div style={styles.hero}>
             <h1 style={styles.heroTitle}>
               Football AI Defensive Assistant
-              {dashboardTier === 2 && (
+              {tier2Enabled && (
                 <span style={{ color: "#000000", marginLeft: "10px", fontWeight: "bold" }}>
                   Tier 2
                 </span>
