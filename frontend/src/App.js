@@ -1499,7 +1499,7 @@ function App() {
             <div style={styles.proTopBar}>
               <div>
                 <h1 style={styles.setupTitle}>
-                  Coordin<span style={{ color: "#41d00e" }}>AI</span>te<span style={{ color: "#41d00e", marginLeft: "10px" }}>Pro</span>
+                  Coordin<span style={{ color: "#41d00e" }}>AI</span>te<span style={{ color: "#41d00e", marginLeft: "20px" }}>Pro</span>
                 </h1>
                 <p style={{ ...styles.setupSubtitle, marginBottom: 0, color: "#aaaaaa" }}>
                   Unlock the next layer of game intelligence with Tier 2.
