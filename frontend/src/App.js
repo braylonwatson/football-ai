@@ -1769,7 +1769,7 @@ function App() {
               Football AI Defensive Assistant
               {tier2Enabled && (
                 <span style={{ color: "#1fc022", marginLeft: "10px", fontWeight: "bold" }}>
-                  Tier 2
+                  Pro
                 </span>
               )}
             </h1>
