@@ -1765,7 +1765,14 @@ function App() {
           </div>
 
           <div style={styles.hero}>
-            <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
+            <h1 style={styles.heroTitle}>
+              Football AI Defensive Assistant
+              {dashboardTier === 2 && (
+                <span style={{ color: "#000000", marginLeft: "10px", fontWeight: "bold" }}>
+                  Tier 2
+                </span>
+              )}
+            </h1>
             <div style={styles.heroSubtitle}>
               Live play prediction, defensive recommendation, and in-game tracking
               {offense && defense && (
