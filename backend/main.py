@@ -66,6 +66,14 @@ def subscription_is_active(status: Optional[str]) -> bool:
     return status in {"active", "trialing"}
 
 
+def stripe_value(obj, key, default=None):
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -180,9 +188,9 @@ def get_or_create_stripe_customer(db, user: User) -> str:
 
 
 def update_user_from_subscription_event(db, subscription_obj) -> None:
-    customer_id = subscription_obj.get("customer")
-    subscription_id = subscription_obj.get("id")
-    status = subscription_obj.get("status")
+    customer_id = stripe_value(subscription_obj, "customer")
+    subscription_id = stripe_value(subscription_obj, "id")
+    status = stripe_value(subscription_obj, "status")
 
     if not customer_id:
         return
@@ -339,14 +347,15 @@ async def stripe_webhook(request: Request):
 
     db = SessionLocal()
     try:
-        event_type = event["type"]
-        event_obj = event["data"]["object"]
+        event_type = stripe_value(event, "type")
+        event_data = stripe_value(event, "data")
+        event_obj = stripe_value(event_data, "object")
 
         if event_type == "checkout.session.completed":
-            customer_id = event_obj.get("customer")
-            subscription_id = event_obj.get("subscription")
-            metadata = event_obj.get("metadata", {})
-            user_id = metadata.get("user_id") or event_obj.get("client_reference_id")
+            customer_id = stripe_value(event_obj, "customer")
+            subscription_id = stripe_value(event_obj, "subscription")
+            metadata = stripe_value(event_obj, "metadata", {}) or {}
+            user_id = stripe_value(metadata, "user_id") or stripe_value(event_obj, "client_reference_id")
 
             user = None
             if user_id:
@@ -365,7 +374,7 @@ async def stripe_webhook(request: Request):
                     user.stripe_subscription_id = subscription_id
                     try:
                         sub = stripe.Subscription.retrieve(subscription_id)
-                        sync_user_subscription_fields(user, sub.status)
+                        sync_user_subscription_fields(user, stripe_value(sub, "status", "active"))
                     except Exception as sub_err:
                         print("Stripe subscription retrieve failed:", str(sub_err))
                         sync_user_subscription_fields(user, "active")
@@ -381,27 +390,10 @@ async def stripe_webhook(request: Request):
             "customer.subscription.updated",
             "customer.subscription.deleted",
         }:
-            customer_id = event_obj.get("customer")
-            subscription_id = event_obj.get("id")
-            status = event_obj.get("status")
-
-            print(
-                f"{event_type}: customer_id={customer_id}, "
-                f"subscription_id={subscription_id}, status={status}"
-            )
-
-            if customer_id:
-                user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
-
-                if user:
-                    user.stripe_subscription_id = subscription_id
-                    sync_user_subscription_fields(user, status)
-                    db.commit()
-                else:
-                    print(f"{event_type}: no user found for customer {customer_id}")
+            update_user_from_subscription_event(db, event_obj)
 
         elif event_type == "invoice.payment_failed":
-            customer_id = event_obj.get("customer")
+            customer_id = stripe_value(event_obj, "customer")
             if customer_id:
                 user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
                 if user:
@@ -409,8 +401,8 @@ async def stripe_webhook(request: Request):
                     db.commit()
 
         elif event_type == "invoice.payment_succeeded":
-            customer_id = event_obj.get("customer")
-            subscription_id = event_obj.get("subscription")
+            customer_id = stripe_value(event_obj, "customer")
+            subscription_id = stripe_value(event_obj, "subscription")
             if customer_id:
                 user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
                 if user:
@@ -424,8 +416,6 @@ async def stripe_webhook(request: Request):
     except Exception as e:
         print("Webhook handler error:", str(e))
         return JSONResponse({"detail": f"Webhook handler error: {str(e)}"}, status_code=500)
-
-        return JSONResponse({"status": "success"})
     finally:
         db.close()
 
