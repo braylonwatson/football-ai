@@ -340,50 +340,90 @@ async def stripe_webhook(request: Request):
     db = SessionLocal()
     try:
         event_type = event["type"]
+        event_obj = event["data"]["object"]
 
         if event_type == "checkout.session.completed":
-            session = event["data"]["object"]
-            customer_id = session.get("customer")
-            subscription_id = session.get("subscription")
-            metadata = session.get("metadata", {})
-            user_id = metadata.get("user_id") or session.get("client_reference_id")
+            customer_id = event_obj.get("customer")
+            subscription_id = event_obj.get("subscription")
+            metadata = event_obj.get("metadata", {})
+            user_id = metadata.get("user_id") or event_obj.get("client_reference_id")
 
             user = None
             if user_id:
-                user = db.query(User).filter(User.id == int(user_id)).first()
-            elif customer_id:
+                try:
+                    user = db.query(User).filter(User.id == int(user_id)).first()
+                except ValueError:
+                    user = None
+
+            if not user and customer_id:
                 user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
 
             if user:
-                if customer_id and not user.stripe_customer_id:
+                if customer_id:
                     user.stripe_customer_id = customer_id
                 if subscription_id:
                     user.stripe_subscription_id = subscription_id
                     try:
                         sub = stripe.Subscription.retrieve(subscription_id)
                         sync_user_subscription_fields(user, sub.status)
-                    except Exception:
+                    except Exception as sub_err:
+                        print("Stripe subscription retrieve failed:", str(sub_err))
                         sync_user_subscription_fields(user, "active")
                 else:
                     sync_user_subscription_fields(user, "active")
+
                 db.commit()
+            else:
+                print("checkout.session.completed: no matching user found")
 
         elif event_type in {
             "customer.subscription.created",
             "customer.subscription.updated",
             "customer.subscription.deleted",
         }:
-            subscription_obj = event["data"]["object"]
-            update_user_from_subscription_event(db, subscription_obj)
+            customer_id = event_obj.get("customer")
+            subscription_id = event_obj.get("id")
+            status = event_obj.get("status")
+
+            print(
+                f"{event_type}: customer_id={customer_id}, "
+                f"subscription_id={subscription_id}, status={status}"
+            )
+
+            if customer_id:
+                user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+
+                if user:
+                    user.stripe_subscription_id = subscription_id
+                    sync_user_subscription_fields(user, status)
+                    db.commit()
+                else:
+                    print(f"{event_type}: no user found for customer {customer_id}")
 
         elif event_type == "invoice.payment_failed":
-            invoice = event["data"]["object"]
-            customer_id = invoice.get("customer")
+            customer_id = event_obj.get("customer")
             if customer_id:
                 user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
                 if user:
                     sync_user_subscription_fields(user, "past_due")
                     db.commit()
+
+        elif event_type == "invoice.payment_succeeded":
+            customer_id = event_obj.get("customer")
+            subscription_id = event_obj.get("subscription")
+            if customer_id:
+                user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+                if user:
+                    if subscription_id:
+                        user.stripe_subscription_id = subscription_id
+                    sync_user_subscription_fields(user, "active")
+                    db.commit()
+
+        return JSONResponse({"status": "success"})
+
+    except Exception as e:
+        print("Webhook handler error:", str(e))
+        return JSONResponse({"detail": f"Webhook handler error: {str(e)}"}, status_code=500)
 
         return JSONResponse({"status": "success"})
     finally:
