@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import BackgroundParticles from "./BackgroundParticles";
 
-const API = process.env.REACT_APP_API_URL;
+const API = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
 
 const TEAM_OPTIONS = [
   { value: "ARI", label: "Arizona Cardinals" },
@@ -165,6 +165,15 @@ function App() {
   });
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [subscription, setSubscription] = useState({
+    tier: "free",
+    subscription_status: null,
+    tier2_access: false,
+    tier2_models_available: false,
+  });
+  const [subscriptionMessage, setSubscriptionMessage] = useState("");
+
   const [authForm, setAuthForm] = useState({
     name: "",
     email: "",
@@ -191,12 +200,39 @@ function App() {
   const [historyGames, setHistoryGames] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-  const [dashboardTier, setDashboardTier] = useState(1);
-  const [tier2Ready, setTier2Ready] = useState(false);
-
   const getTeamDisplay = useCallback((code) => {
     if (!code) return "";
     return TEAM_NAME_BY_CODE[code] ? `${TEAM_NAME_BY_CODE[code]} (${code})` : code;
+  }, []);
+
+  const fetchSubscriptionStatus = useCallback(async (userId) => {
+    if (!userId) {
+      setSubscription({
+        tier: "free",
+        subscription_status: null,
+        tier2_access: false,
+        tier2_models_available: false,
+      });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/me/subscription?user_id=${userId}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        return;
+      }
+
+      setSubscription({
+        tier: data.tier || "free",
+        subscription_status: data.subscription_status || null,
+        tier2_access: Boolean(data.tier2_access),
+        tier2_models_available: Boolean(data.tier2_models_available),
+      });
+    } catch (error) {
+      console.error("Error fetching subscription status:", error);
+    }
   }, []);
 
   const refreshData = useCallback(async () => {
@@ -241,35 +277,36 @@ function App() {
   useEffect(() => {
     refreshData();
 
-    const fetchTier2Status = async () => {
-      try {
-        const res = await fetch(`${API}/tier2-status`);
-        const data = await res.json();
-        if (res.ok) {
-          setTier2Ready(Boolean(data.tier2_available));
-        }
-      } catch (error) {
-        console.error("Error fetching tier2 status:", error);
-        setTier2Ready(false);
-      }
-    };
-
-    fetchTier2Status();
-
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener("resize", handleResize);
 
     if (user) {
       setIsGuest(false);
       fetchUserGames(user.user_id);
+      fetchSubscriptionStatus(user.user_id);
     }
 
     if (user || isGuest) {
       setScreen("teamSetup");
     }
 
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get("success");
+    const canceled = params.get("canceled");
+
+    if (success === "true") {
+      setSubscriptionMessage("Payment successful. Tier 2 access is being activated.");
+      if (user?.user_id) {
+        fetchSubscriptionStatus(user.user_id);
+      }
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (canceled === "true") {
+      setSubscriptionMessage("Checkout was canceled.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     return () => window.removeEventListener("resize", handleResize);
-  }, [refreshData, user, isGuest]);
+  }, [refreshData, user, isGuest, fetchSubscriptionStatus]);
 
   const userGames = useMemo(() => historyGames, [historyGames]);
 
@@ -299,6 +336,12 @@ function App() {
     setIsGuest(true);
     setUser(null);
     setAuthError("");
+    setSubscription({
+      tier: "free",
+      subscription_status: null,
+      tier2_access: false,
+      tier2_models_available: false,
+    });
     localStorage.setItem("coordinaite_guest", "true");
     localStorage.removeItem("coordinaite_current_user");
     setScreen("teamSetup");
@@ -348,9 +391,16 @@ function App() {
         localStorage.removeItem("coordinaite_guest");
         setUser(newUser);
         setIsGuest(false);
+        setSubscription({
+          tier: data.tier || "free",
+          subscription_status: data.subscription_status || null,
+          tier2_access: false,
+          tier2_models_available: false,
+        });
         setAuthForm({ name: "", email: "", password: "" });
         setScreen("teamSetup");
         fetchUserGames(newUser.user_id);
+        fetchSubscriptionStatus(newUser.user_id);
         return;
       }
 
@@ -382,9 +432,16 @@ function App() {
       localStorage.removeItem("coordinaite_guest");
       setUser(existingUser);
       setIsGuest(false);
+      setSubscription({
+        tier: data.tier || "free",
+        subscription_status: data.subscription_status || null,
+        tier2_access: Boolean(data.tier === "tier2"),
+        tier2_models_available: false,
+      });
       setAuthForm({ name: "", email: "", password: "" });
       setScreen("teamSetup");
       fetchUserGames(existingUser.user_id);
+      fetchSubscriptionStatus(existingUser.user_id);
     } catch (error) {
       console.error("Auth error:", error);
       setAuthError("Could not connect to the server.");
@@ -398,7 +455,13 @@ function App() {
     setIsGuest(false);
     setHistoryGames([]);
     setShowSavePrompt(false);
-    setDashboardTier(1);
+    setSubscription({
+      tier: "free",
+      subscription_status: null,
+      tier2_access: false,
+      tier2_models_available: false,
+    });
+    setSubscriptionMessage("");
     resetGameState();
     setScreen("authChoice");
   };
@@ -434,10 +497,49 @@ function App() {
       }
 
       setTeamsSet(true);
-      setScreen(dashboardTier === 2 ? "tier2Dashboard" : "dashboard");
+      setScreen("dashboard");
     } catch (error) {
       console.error("Error setting teams:", error);
       setSetupError("Could not connect to the server.");
+    }
+  };
+
+  const handleUpgradeCheckout = async () => {
+    if (!user?.user_id) {
+      setAuthError("You need to log in before purchasing Tier 2.");
+      setScreen("authChoice");
+      return;
+    }
+
+    try {
+      setCheckoutLoading(true);
+      setSubscriptionMessage("");
+
+      const res = await fetch(`${API}/create-checkout-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user_id: user.user_id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to start checkout.");
+      }
+
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      throw new Error("No checkout URL returned.");
+    } catch (error) {
+      console.error("Checkout error:", error);
+      setSubscriptionMessage(error.message || "Unable to start checkout.");
+    } finally {
+      setCheckoutLoading(false);
     }
   };
 
@@ -449,15 +551,24 @@ function App() {
       return;
     }
 
+    const useTier2 =
+      Boolean(user?.user_id) &&
+      subscription.tier2_access &&
+      subscription.tier2_models_available;
+
+    const endpoint = useTier2 ? "/predict-tier2" : "/predict";
+
     try {
-      const endpoint = screen === "tier2Dashboard" ? "/predict-tier2" : "/predict";
+      const payload = useTier2
+        ? { ...form, user_id: user.user_id }
+        : { ...form };
 
       const res = await fetch(`${API}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -522,7 +633,6 @@ function App() {
     actualPlayType,
     yardsGained,
     teamsSet: true,
-    dashboardTier,
   });
 
   const handleSaveGame = async () => {
@@ -553,7 +663,6 @@ function App() {
 
       await fetchUserGames(user.user_id);
       resetGameState();
-      setDashboardTier(1);
       setScreen("teamSetup");
     } catch (error) {
       console.error("Error saving game:", error);
@@ -599,11 +708,7 @@ function App() {
       setYardsGained(loaded.yardsGained ?? 0);
       setSetupError("");
       setTeamsSet(Boolean(loaded.offense && loaded.defense));
-
-      const savedTier = loaded.dashboardTier === 2 ? 2 : 1;
-      setDashboardTier(savedTier);
-      setScreen(savedTier === 2 ? "tier2Dashboard" : "dashboard");
-
+      setScreen("dashboard");
       refreshData();
     } catch (error) {
       console.error("Error resuming game:", error);
@@ -1150,7 +1255,7 @@ function App() {
   };
 
   const launchDisabled = !offense || !defense;
-  const isTier2Screen = screen === "tier2Dashboard";
+  const tier2Enabled = subscription.tier2_access && subscription.tier2_models_available;
 
   if (screen === "authChoice") {
     return (
@@ -1285,7 +1390,9 @@ function App() {
               </div>
               <div style={styles.topBarRight}>
                 <span style={styles.statusPill}>
-                  {user ? `Logged in as ${user.name}` : "Guest Mode"}
+                  {user
+                    ? `Logged in as ${user.name}${tier2Enabled ? " • Tier 2" : ""}`
+                    : "Guest Mode"}
                 </span>
                 <button
                   onClick={() => setScreen("upgrade")}
@@ -1400,17 +1507,7 @@ function App() {
               </div>
               <div style={styles.topBarRight}>
                 <button
-                  onClick={() =>
-                    setScreen(
-                      user || isGuest
-                        ? teamsSet
-                          ? dashboardTier === 2
-                            ? "tier2Dashboard"
-                            : "dashboard"
-                          : "teamSetup"
-                        : "authChoice"
-                    )
-                  }
+                  onClick={() => setScreen(user || isGuest ? (teamsSet ? "dashboard" : "teamSetup") : "authChoice")}
                   style={styles.buttonSecondary}
                 >
                   Back
@@ -1419,18 +1516,7 @@ function App() {
             </div>
 
             <div style={styles.tierShowcaseWrap}>
-              <div
-                style={{
-                  ...styles.tierShowcaseCard,
-                  cursor: tier2Ready ? "pointer" : "not-allowed",
-                  opacity: tier2Ready ? 1 : 0.7,
-                }}
-                onClick={() => {
-                  if (!tier2Ready) return;
-                  setDashboardTier(2);
-                  setScreen(teamsSet ? "tier2Dashboard" : "teamSetup");
-                }}
-              >
+              <div style={styles.tierShowcaseCard}>
                 <div>
                   <div style={styles.tierLabel}>Premium Plan</div>
                   <h2 style={styles.tierTitle}>Tier 2</h2>
@@ -1463,31 +1549,81 @@ function App() {
                       </div>
                     </div>
                   </div>
+
+                  {user ? (
+                    <div style={{ marginTop: "18px" }}>
+                      <div style={styles.reasonBox}>
+                        Current tier:{" "}
+                        <strong>{tier2Enabled ? "Tier 2 Active" : subscription.tier || "free"}</strong>
+                        {subscription.subscription_status ? (
+                          <>
+                            <br />
+                            Subscription status:{" "}
+                            <strong>{subscription.subscription_status}</strong>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: "18px" }}>
+                      <div style={styles.reasonBox}>
+                        Log in to purchase Tier 2 and unlock premium predictions.
+                      </div>
+                    </div>
+                  )}
+
+                  {subscriptionMessage && (
+                    <div
+                      style={{
+                        ...styles.reasonBox,
+                        color:
+                          subscriptionMessage.toLowerCase().includes("successful") ||
+                          subscriptionMessage.toLowerCase().includes("activated")
+                            ? "#bbf7d0"
+                            : "#fca5a5",
+                      }}
+                    >
+                      {subscriptionMessage}
+                    </div>
+                  )}
                 </div>
 
-                <div style={styles.tierFooterText}>
-                  CoordinAIte Pro Tier 2 is designed to give you a more detailed
-                  pre-snap picture without changing the look and feel of your current workflow.
+                <div>
+                  <div style={styles.tierFooterText}>
+                    CoordinAIte Pro Tier 2 is designed to give you a more detailed
+                    pre-snap picture without changing the look and feel of your current workflow.
+                  </div>
 
-                  <div style={{ marginTop: "18px" }}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!tier2Ready) return;
-                        setDashboardTier(2);
-                        setScreen(teamsSet ? "tier2Dashboard" : "teamSetup");
-                      }}
-                      style={{
-                        ...styles.buttonPrimary,
-                        width: "100%",
-                        opacity: tier2Ready ? 1 : 0.7,
-                        cursor: tier2Ready ? "pointer" : "not-allowed",
-                      }}
-                      disabled={!tier2Ready}
-                    >
-                      {tier2Ready ? "Enter Tier 2 Dashboard" : "Tier 2 Models Not Loaded Yet"}
-                    </button>
+                  <div style={styles.buttonRow}>
+                    {tier2Enabled ? (
+                      <button
+                        onClick={() => setScreen(teamsSet ? "dashboard" : "teamSetup")}
+                        style={styles.buttonPrimary}
+                      >
+                        Tier 2 Active
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleUpgradeCheckout}
+                        style={{
+                          ...styles.buttonPrimary,
+                          opacity: checkoutLoading ? 0.75 : 1,
+                          cursor: checkoutLoading ? "wait" : "pointer",
+                        }}
+                        disabled={checkoutLoading}
+                      >
+                        {checkoutLoading ? "Opening Checkout..." : "Subscribe to Tier 2"}
+                      </button>
+                    )}
+
+                    {!user && (
+                      <button
+                        onClick={() => setScreen("authChoice")}
+                        style={styles.buttonSecondary}
+                      >
+                        Login / Sign Up
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1525,15 +1661,7 @@ function App() {
               </div>
               <div style={styles.topBarRight}>
                 <button
-                  onClick={() =>
-                    setScreen(
-                      teamsSet
-                        ? dashboardTier === 2
-                          ? "tier2Dashboard"
-                          : "dashboard"
-                        : "teamSetup"
-                    )
-                  }
+                  onClick={() => setScreen(teamsSet ? "dashboard" : "teamSetup")}
                   style={styles.buttonSecondary}
                 >
                   Back
@@ -1595,14 +1723,15 @@ function App() {
           <div style={styles.topBar}>
             <div style={styles.topBarRight}>
               <span style={styles.statusPill}>
-                {user ? `Account: ${user.name}` : "Guest Session"}
+                {user
+                  ? `Account: ${user.name}${tier2Enabled ? " • Tier 2" : ""}`
+                  : "Guest Session"}
               </span>
             </div>
             <div style={styles.topBarRight}>
               <button
                 onClick={() => {
                   resetGameState();
-                  setDashboardTier(1);
                   setScreen("teamSetup");
                 }}
                 style={styles.buttonSecondary}
@@ -1636,19 +1765,17 @@ function App() {
           </div>
 
           <div style={styles.hero}>
-            <h1 style={styles.heroTitle}>
-              Football AI Defensive Assistant {isTier2Screen ? "— Tier 2" : ""}
-            </h1>
+            <h1 style={styles.heroTitle}>Football AI Defensive Assistant</h1>
             <div style={styles.heroSubtitle}>
               Live play prediction, defensive recommendation, and in-game tracking
-              <br />
-              {isTier2Screen ? "Tier 2 Dashboard" : "Tier 1 Dashboard"}
               {offense && defense && (
                 <>
                   <br />
                   {getTeamDisplay(offense)} offense vs {getTeamDisplay(defense)} defense
                 </>
               )}
+              <br />
+              Mode: {tier2Enabled ? "Tier 2 prediction enabled" : "Base prediction"}
             </div>
           </div>
 
@@ -1849,6 +1976,7 @@ function App() {
               <div style={styles.predictionBig}>{prediction.prediction}</div>
               <div style={styles.predictionMeta}>
                 Confidence: {(prediction.confidence * 100).toFixed(1)}%
+                {prediction.tier === 2 ? " • Tier 2" : ""}
               </div>
 
               <div style={styles.metricRow}>
@@ -1867,32 +1995,30 @@ function App() {
                 </div>
               </div>
 
-              {isTier2Screen && (
+              {prediction.play_direction_prediction && (
                 <div style={styles.metricRow}>
                   <div style={styles.metricBox}>
-                    <div style={styles.metricLabel}>Predicted Direction</div>
+                    <div style={styles.metricLabel}>Play Direction</div>
                     <div style={styles.metricValue}>
-                      {prediction.play_direction_prediction || "N/A"}
+                      {prediction.play_direction_prediction}
                     </div>
-                    <div style={styles.predictionMeta}>
-                      Confidence:{" "}
-                      {prediction.play_direction_confidence != null
-                        ? `${(prediction.play_direction_confidence * 100).toFixed(1)}%`
-                        : "N/A"}
-                    </div>
+                    {prediction.play_direction_confidence != null && (
+                      <div style={styles.predictionMeta}>
+                        Confidence: {(prediction.play_direction_confidence * 100).toFixed(1)}%
+                      </div>
+                    )}
                   </div>
 
                   <div style={styles.metricBox}>
-                    <div style={styles.metricLabel}>Predicted Concept</div>
+                    <div style={styles.metricLabel}>Play Concept</div>
                     <div style={styles.metricValue}>
-                      {prediction.play_concept_prediction || "N/A"}
+                      {prediction.play_concept_prediction}
                     </div>
-                    <div style={styles.predictionMeta}>
-                      Confidence:{" "}
-                      {prediction.play_concept_confidence != null
-                        ? `${(prediction.play_concept_confidence * 100).toFixed(1)}%`
-                        : "N/A"}
-                    </div>
+                    {prediction.play_concept_confidence != null && (
+                      <div style={styles.predictionMeta}>
+                        Confidence: {(prediction.play_concept_confidence * 100).toFixed(1)}%
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

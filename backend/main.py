@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -9,15 +10,25 @@ from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from passlib.hash import pbkdf2_sha256
 from dotenv import load_dotenv
+import stripe
 import os
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PRICE_ID_TIER2 = os.getenv("STRIPE_PRICE_ID_TIER2")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set.")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
+stripe.api_key = STRIPE_SECRET_KEY
 
 VALID_TEAMS = {
     "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
@@ -29,6 +40,10 @@ VALID_TEAMS = {
 
 def normalize_team(team: Optional[str]) -> str:
     return (team or "").strip().upper()
+
+
+def normalize_email(email: Optional[str]) -> str:
+    return (email or "").strip().lower()
 
 
 def validate_team_code(team: str, field_name: str) -> None:
@@ -47,6 +62,10 @@ def verify_password(password: str, hashed: str):
     return pbkdf2_sha256.verify(password, hashed)
 
 
+def subscription_is_active(status: Optional[str]) -> bool:
+    return status in {"active", "trialing"}
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -54,6 +73,12 @@ class User(Base):
     username = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+
+    # Stripe / subscription fields
+    tier = Column(String, nullable=False, default="free")
+    subscription_status = Column(String, nullable=True)
+    stripe_customer_id = Column(String, nullable=True)
+    stripe_subscription_id = Column(String, nullable=True)
 
 
 class SavedGame(Base):
@@ -93,6 +118,7 @@ class PredictRequest(BaseModel):
     game_seconds_remaining: int
     qtr: int
     score_differential: int
+    user_id: Optional[int] = None
 
 
 class LogPlayRequest(BaseModel):
@@ -122,6 +148,54 @@ class LoadGameRequest(BaseModel):
     game_id: int
 
 
+class CheckoutSessionRequest(BaseModel):
+    user_id: int
+
+
+def get_user_by_id(db, user_id: int) -> User:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+def sync_user_subscription_fields(user: User, subscription_status: Optional[str]) -> None:
+    user.subscription_status = subscription_status
+    user.tier = "tier2" if subscription_is_active(subscription_status) else "free"
+
+
+def get_or_create_stripe_customer(db, user: User) -> str:
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
+
+    customer = stripe.Customer.create(
+        email=user.email,
+        name=user.username,
+        metadata={"user_id": str(user.id)},
+    )
+    user.stripe_customer_id = customer.id
+    db.commit()
+    db.refresh(user)
+    return user.stripe_customer_id
+
+
+def update_user_from_subscription_event(db, subscription_obj) -> None:
+    customer_id = subscription_obj.get("customer")
+    subscription_id = subscription_obj.get("id")
+    status = subscription_obj.get("status")
+
+    if not customer_id:
+        return
+
+    user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+    if not user:
+        return
+
+    user.stripe_subscription_id = subscription_id
+    sync_user_subscription_fields(user, status)
+    db.commit()
+
+
 @app.get("/")
 def root():
     return {"message": "Football AI backend is running"}
@@ -132,25 +206,51 @@ def tier2_status():
     return {"tier2_available": tracker.tier2_available()}
 
 
+@app.get("/me/subscription")
+def get_my_subscription(user_id: int):
+    db = SessionLocal()
+    try:
+        user = get_user_by_id(db, user_id)
+        return {
+            "user_id": user.id,
+            "tier": user.tier or "free",
+            "subscription_status": user.subscription_status,
+            "tier2_access": subscription_is_active(user.subscription_status),
+            "tier2_models_available": tracker.tier2_available(),
+        }
+    finally:
+        db.close()
+
+
 @app.post("/signup")
 def signup(data: SignupRequest):
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.email == data.email).first()
+        email = normalize_email(data.email)
+        existing = db.query(User).filter(User.email == email).first()
         if existing:
             raise HTTPException(status_code=400, detail="User already exists")
 
         user = User(
-            username=data.username,
-            email=data.email,
+            username=data.username.strip(),
+            email=email,
             password_hash=hash_password(data.password),
+            tier="free",
+            subscription_status=None,
+            stripe_customer_id=None,
+            stripe_subscription_id=None,
         )
 
         db.add(user)
         db.commit()
         db.refresh(user)
 
-        return {"user_id": user.id, "username": user.username}
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "tier": user.tier,
+            "subscription_status": user.subscription_status,
+        }
     finally:
         db.close()
 
@@ -159,12 +259,133 @@ def signup(data: SignupRequest):
 def login(data: LoginRequest):
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.email == data.email).first()
+        email = normalize_email(data.email)
+        user = db.query(User).filter(User.email == email).first()
 
         if not user or not verify_password(data.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        return {"user_id": user.id, "username": user.username}
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "tier": user.tier or "free",
+            "subscription_status": user.subscription_status,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/create-checkout-session")
+def create_checkout_session(data: CheckoutSessionRequest):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe secret key is not configured.")
+    if not STRIPE_PRICE_ID_TIER2:
+        raise HTTPException(status_code=500, detail="Stripe price ID is not configured.")
+
+    db = SessionLocal()
+    try:
+        user = get_user_by_id(db, data.user_id)
+
+        customer_id = get_or_create_stripe_customer(db, user)
+
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=customer_id,
+            client_reference_id=str(user.id),
+            line_items=[
+                {
+                    "price": STRIPE_PRICE_ID_TIER2,
+                    "quantity": 1,
+                }
+            ],
+            metadata={"user_id": str(user.id)},
+            success_url=f"{FRONTEND_URL}/?success=true",
+            cancel_url=f"{FRONTEND_URL}/?canceled=true",
+        )
+
+        return {"url": session.url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+    finally:
+        db.close()
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    if not STRIPE_SECRET_KEY:
+        return JSONResponse({"detail": "Stripe secret key is not configured."}, status_code=500)
+
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        if STRIPE_WEBHOOK_SECRET:
+            event = stripe.Webhook.construct_event(
+                payload=payload,
+                sig_header=sig_header,
+                secret=STRIPE_WEBHOOK_SECRET,
+            )
+        else:
+            # Fallback for local testing if webhook secret is not set yet
+            event = stripe.Event.construct_from(await request.json(), stripe.api_key)
+    except ValueError:
+        return JSONResponse({"detail": "Invalid webhook payload."}, status_code=400)
+    except stripe.error.SignatureVerificationError:
+        return JSONResponse({"detail": "Invalid webhook signature."}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+
+    db = SessionLocal()
+    try:
+        event_type = event["type"]
+
+        if event_type == "checkout.session.completed":
+            session = event["data"]["object"]
+            customer_id = session.get("customer")
+            subscription_id = session.get("subscription")
+            metadata = session.get("metadata", {})
+            user_id = metadata.get("user_id") or session.get("client_reference_id")
+
+            user = None
+            if user_id:
+                user = db.query(User).filter(User.id == int(user_id)).first()
+            elif customer_id:
+                user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+
+            if user:
+                if customer_id and not user.stripe_customer_id:
+                    user.stripe_customer_id = customer_id
+                if subscription_id:
+                    user.stripe_subscription_id = subscription_id
+                    try:
+                        sub = stripe.Subscription.retrieve(subscription_id)
+                        sync_user_subscription_fields(user, sub.status)
+                    except Exception:
+                        sync_user_subscription_fields(user, "active")
+                else:
+                    sync_user_subscription_fields(user, "active")
+                db.commit()
+
+        elif event_type in {
+            "customer.subscription.created",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        }:
+            subscription_obj = event["data"]["object"]
+            update_user_from_subscription_event(db, subscription_obj)
+
+        elif event_type == "invoice.payment_failed":
+            invoice = event["data"]["object"]
+            customer_id = invoice.get("customer")
+            if customer_id:
+                user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+                if user:
+                    sync_user_subscription_fields(user, "past_due")
+                    db.commit()
+
+        return JSONResponse({"status": "success"})
     finally:
         db.close()
 
@@ -315,6 +536,24 @@ def predict(data: PredictRequest):
 
 @app.post("/predict-tier2")
 def predict_tier2(data: PredictRequest):
+    if not data.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Tier 2 prediction requires a logged-in Tier 2 account.",
+        )
+
+    db = SessionLocal()
+    try:
+        user = get_user_by_id(db, data.user_id)
+
+        if not subscription_is_active(user.subscription_status):
+            raise HTTPException(
+                status_code=403,
+                detail="Tier 2 subscription required for this endpoint.",
+            )
+    finally:
+        db.close()
+
     offense = normalize_team(getattr(tracker, "offense", ""))
     defense = normalize_team(getattr(tracker, "defense", ""))
 
