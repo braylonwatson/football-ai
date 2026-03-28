@@ -15,7 +15,7 @@ from model_wrappers import EncodedClassifier
 from feature_builder import build_situational_flags
 
 
-SEASONS = [2020, 2021, 2022, 2023]
+SEASONS = [2022, 2023, 2024, 2025]
 BACKEND_DIR = BASE_DIR / "backend"
 
 
@@ -35,6 +35,16 @@ def make_xgb_classifier(num_classes=None):
         params["num_class"] = num_classes
 
     return XGBClassifier(**params)
+
+
+def get_season_weight(season):
+    if season == 2025:
+        return 1.5
+    if season == 2024:
+        return 1.3
+    if season == 2023:
+        return 1.1
+    return 1.0
 
 
 def normalize_direction(value):
@@ -119,7 +129,7 @@ def add_shared_features(pbp):
 
     pbp = pbp.sort_values(by=["game_id", "play_id"]).copy()
 
-    pbp["prev_play_pass"] = pbp.groupby("game_id")["is_pass"].shift(1)
+    pbp["prev_play_pass"] = pbp.groupby("game_id")["is_pass"].shift(1).fillna(0)
 
     pbp["game_pass_rate"] = (
         pbp.groupby("game_id")["is_pass"]
@@ -127,6 +137,7 @@ def add_shared_features(pbp):
         .mean()
         .shift(1)
         .reset_index(level=0, drop=True)
+        .fillna(0.5)
     )
 
     pbp["drive_pass_rate"] = (
@@ -135,6 +146,7 @@ def add_shared_features(pbp):
         .mean()
         .shift(1)
         .reset_index(level=[0, 1], drop=True)
+        .fillna(0.5)
     )
 
     situational_rows = pbp.apply(
@@ -191,35 +203,41 @@ def get_feature_columns(include_is_pass=False):
 
 
 def prepare_encoded_xy(df, feature_columns, target_column):
-    working = df[feature_columns + [target_column]].dropna().copy()
+    working = df[feature_columns + [target_column, "season_weight"]].dropna().copy()
     encoded = pd.get_dummies(working, columns=["posteam", "defteam"], drop_first=True)
 
-    X = encoded.drop(columns=[target_column])
+    X = encoded.drop(columns=[target_column, "season_weight"])
     y = encoded[target_column]
+    weights = encoded["season_weight"]
 
     duplicate_cols = X.columns[X.columns.duplicated()].tolist()
     if duplicate_cols:
         raise ValueError(f"Duplicate columns in X: {duplicate_cols}")
 
-    return X, y
+    return X, y, weights
 
 
 def train_and_save_binary_run_pass_model(pbp):
     print("\n=== Training Tier 1 Run/Pass Model ===")
 
     features = get_feature_columns(include_is_pass=False)
-    X, y = prepare_encoded_xy(pbp.assign(target_is_pass=pbp["is_pass"]), features, "target_is_pass")
+    X, y, weights = prepare_encoded_xy(
+        pbp.assign(target_is_pass=pbp["is_pass"]),
+        features,
+        "target_is_pass",
+    )
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X,
         y,
+        weights,
         test_size=0.2,
         random_state=42,
         stratify=y,
     )
 
     model = make_xgb_classifier()
-    model.fit(X_train, y_train)
+    model.fit(X_train, y_train, sample_weight=w_train)
 
     preds = model.predict(X_test)
 
@@ -256,14 +274,15 @@ def train_and_save_direction_model(pbp):
         raise ValueError("No valid play_direction labels found.")
 
     features = get_feature_columns(include_is_pass=True)
-    X, y = prepare_encoded_xy(direction_df, features, "play_direction")
+    X, y, weights = prepare_encoded_xy(direction_df, features, "play_direction")
 
     unique_classes = sorted(y.unique())
     print(f"Direction classes: {unique_classes}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X,
         y,
+        weights,
         test_size=0.2,
         random_state=42,
         stratify=y,
@@ -302,14 +321,15 @@ def train_and_save_run_concept_model(pbp):
         raise ValueError("No valid run_concept labels found.")
 
     features = get_feature_columns(include_is_pass=False)
-    X, y = prepare_encoded_xy(run_df, features, "run_concept")
+    X, y, weights = prepare_encoded_xy(run_df, features, "run_concept")
 
     unique_classes = sorted(y.unique())
     print(f"Run concept classes: {unique_classes}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X,
         y,
+        weights,
         test_size=0.2,
         random_state=42,
         stratify=y,
@@ -355,7 +375,7 @@ def train_and_save_pass_concept_model(pbp):
         raise ValueError("No valid pass_concept labels found after filtering rare classes.")
 
     features = get_feature_columns(include_is_pass=False)
-    X, y = prepare_encoded_xy(pass_df, features, "pass_concept")
+    X, y, weights = prepare_encoded_xy(pass_df, features, "pass_concept")
 
     unique_classes = sorted(y.unique())
     print(f"Pass concept classes: {unique_classes}")
@@ -363,9 +383,10 @@ def train_and_save_pass_concept_model(pbp):
     if len(unique_classes) < 2:
         raise ValueError("Need at least two pass concept classes to train the model.")
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
         X,
         y,
+        weights,
         test_size=0.2,
         random_state=42,
         stratify=y,
@@ -397,23 +418,28 @@ def main():
     print(f"Loading nflfastR play-by-play data for seasons: {SEASONS}")
     pbp = nfl.import_pbp_data(SEASONS)
 
-    required_base_columns = [
-        "game_id",
-        "play_id",
-        "drive",
-        "play_type",
-        "down",
-        "ydstogo",
-        "yardline_100",
-        "game_seconds_remaining",
-        "qtr",
-        "score_differential",
-        "posteam",
-        "defteam",
-    ]
-
     pbp = pbp[pbp["play_type"].isin(["run", "pass"])].copy()
-    pbp = pbp.dropna(subset=required_base_columns).copy()
+
+    pbp["down"] = pd.to_numeric(pbp["down"], errors="coerce").fillna(1)
+    pbp["ydstogo"] = pd.to_numeric(pbp["ydstogo"], errors="coerce").fillna(10)
+    pbp["yardline_100"] = pd.to_numeric(pbp["yardline_100"], errors="coerce").fillna(50)
+    pbp["game_seconds_remaining"] = pd.to_numeric(
+        pbp["game_seconds_remaining"], errors="coerce"
+    ).fillna(1800)
+    pbp["qtr"] = pd.to_numeric(pbp["qtr"], errors="coerce").fillna(1)
+    pbp["score_differential"] = pd.to_numeric(
+        pbp["score_differential"], errors="coerce"
+    ).fillna(0)
+
+    pbp["posteam"] = pbp.groupby("game_id")["posteam"].ffill()
+    pbp["defteam"] = pbp.groupby("game_id")["defteam"].ffill()
+
+    pbp = pbp.dropna(
+        subset=["game_id", "play_id", "drive", "play_type", "posteam", "defteam", "season"]
+    ).copy()
+
+    pbp["season_weight"] = pbp["season"].apply(get_season_weight)
+
     pbp = add_shared_features(pbp)
 
     BACKEND_DIR.mkdir(parents=True, exist_ok=True)
