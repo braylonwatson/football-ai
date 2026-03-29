@@ -15,7 +15,7 @@ from model_wrappers import EncodedClassifier
 from feature_builder import build_situational_flags
 
 
-SEASONS = [2022, 2023, 2024, 2025]
+SEASONS = [2021, 2022, 2023, 2024]
 BACKEND_DIR = BASE_DIR / "backend"
 
 
